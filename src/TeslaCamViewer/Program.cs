@@ -2,8 +2,20 @@ using Microsoft.EntityFrameworkCore;
 using TeslaCamViewer.Data;
 using TeslaCamViewer.Services;
 using MudBlazor.Services;
+using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Configure Serilog
+Log.Logger = new LoggerConfiguration()
+    .ReadFrom.Configuration(new ConfigurationBuilder()
+        .AddJsonFile("appsettings.json")
+        .Build())
+    .CreateLogger();
+
+builder.Host.UseSerilog(Log.Logger);
+
+Log.Information("Starting TeslaCamViewer");
 
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("Default")));

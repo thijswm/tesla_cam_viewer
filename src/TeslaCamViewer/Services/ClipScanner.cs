@@ -21,6 +21,7 @@ public class ClipScanner : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        _logger.LogInformation("ClipScanner started, SentryPath={SentryPath}, SavedPath={SavedPath}", _sentryPath, _savedPath);
         while (!stoppingToken.IsCancellationRequested)
         {
             try
@@ -39,9 +40,19 @@ public class ClipScanner : BackgroundService
 
     private async Task ScanRoot(string root, string source, CancellationToken ct)
     {
-        if (!Directory.Exists(root)) return;
+        if (!Directory.Exists(root))
+        {
+            _logger.LogWarning("Directory {Root} does not exist, skipping", root);
+            return;
+        }
+
+        _logger.LogInformation("Scanning {Source} clips in {Root}", source, root);
+
         using var scope = _sp.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        var eventsProcessed = 0;
+        var clipsInserted = 0;
 
         foreach (var dir in Directory.EnumerateDirectories(root))
         {
@@ -58,10 +69,16 @@ public class ClipScanner : BackgroundService
                         using var s = File.OpenRead(eventJson);
                         var doc = await JsonDocument.ParseAsync(s, cancellationToken: ct);
                         evt.Type = doc.RootElement.TryGetProperty("reason", out var r) ? r.GetString() ?? "unknown" : "unknown";
+                        _logger.LogDebug("Parsed event.json for {FolderName}: Type={Type}", folderName, evt.Type);
                     }
-                    catch { }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to read event.json in {Dir}", dir);
+                    }
                 }
                 db.Events.Add(evt);
+                eventsProcessed++;
+                _logger.LogInformation("New event detected: {FolderName} ({Source})", folderName, source);
             }
 
             foreach (var mp4 in Directory.EnumerateFiles(dir, "*.mp4"))
@@ -72,10 +89,19 @@ public class ClipScanner : BackgroundService
                 if (!await db.Clips.AnyAsync(c => c.Path == mp4, ct))
                 {
                     db.Clips.Add(new Clip { Camera = camera, Path = mp4, Timestamp = ts, Event = evt });
+                    clipsInserted++;
+                    _logger.LogDebug("Queued clip insert: {Camera} {Timestamp:u} -> {Path}", camera, ts, mp4);
+                }
+                else
+                {
+                    _logger.LogTrace("Clip already indexed, skipping: {Path}", mp4);
                 }
             }
             await db.SaveChangesAsync(ct);
+            _logger.LogInformation("Processed folder {FolderName}: total clips now={TotalClips}", folderName, await db.Clips.CountAsync(ct));
         }
+
+        _logger.LogInformation("Scan completed for {Source}. EventsProcessed={EventsProcessed}, ClipsInserted={ClipsInserted}", source, eventsProcessed, clipsInserted);
     }
 
     private static string GetCameraFromName(string fileName)
