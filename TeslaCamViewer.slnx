@@ -1,1 +1,3 @@
-<Solution />
+<Solution>
+  <Project Path="src/TeslaCamViewer/TeslaCamViewer.csproj" />
+</Solution>

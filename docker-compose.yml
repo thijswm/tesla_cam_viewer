@@ -1,0 +1,42 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: tesla
+      POSTGRES_PASSWORD: tesla
+      POSTGRES_DB: tesla_cam
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tesla -d tesla_cam"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+  app:
+    build:
+      context: ./src/TeslaCamViewer
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      - ASPNETCORE_URLS=http://0.0.0.0:8080
+      - TZ=UTC
+      - ConnectionStrings__Default=Host=db;Port=5432;Database=tesla_cam;Username=tesla;Password=tesla
+      - TeslaCam__SentryClipsPath=${SENTRY_CLIPS_PATH}
+      - TeslaCam__SavedClipsPath=${SAVED_CLIPS_PATH}
+    ports:
+      - "8080:8080"
+    volumes:
+      - type: bind
+        source: ${SENTRY_CLIPS_PATH}
+        target: /mnt/sentry
+        read_only: true
+      - type: bind
+        source: ${SAVED_CLIPS_PATH}
+        target: /mnt/saved
+        read_only: true
+volumes:
+  db_data:

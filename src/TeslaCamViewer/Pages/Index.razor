@@ -1,0 +1,28 @@
+@page "/"
+@using TeslaCamViewer.Data
+@inject AppDbContext Db
+
+<h1>Tesla Cam Viewer</h1>
+
+<MudTable Items="clips" Dense="true">
+    <HeaderContent>
+        <MudTh>Time</MudTh>
+        <MudTh>Camera</MudTh>
+        <MudTh>Path</MudTh>
+        <MudTh>Event</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd DataLabel="Time">@context.Timestamp.ToString("u")</MudTd>
+        <MudTd DataLabel="Camera">@context.Camera</MudTd>
+        <MudTd DataLabel="Path">@context.Path</MudTd>
+        <MudTd DataLabel="Event">@context.Event?.FolderName</MudTd>
+    </RowTemplate>
+</MudTable>
+
+@code {
+    private List<Clip> clips = new();
+    protected override void OnInitialized()
+    {
+        clips = Db.Clips.Include(c => c.Event).OrderByDescending(c => c.Timestamp).Take(200).ToList();
+    }
+}
