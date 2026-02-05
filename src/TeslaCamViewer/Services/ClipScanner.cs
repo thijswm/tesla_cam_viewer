@@ -1,5 +1,7 @@
-using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using System.Diagnostics.Tracing;
+using System.Text.Json;
+using System.Xml.Linq;
 using TeslaCamViewer.Data;
 
 namespace TeslaCamViewer.Services;
@@ -69,11 +71,54 @@ public class ClipScanner : BackgroundService
                         using var s = File.OpenRead(eventJson);
                         var doc = await JsonDocument.ParseAsync(s, cancellationToken: ct);
                         evt.Type = doc.RootElement.TryGetProperty("reason", out var r) ? r.GetString() ?? "unknown" : "unknown";
+                        evt.City = doc.RootElement.TryGetProperty("city", out var c) ? c.GetString() ?? string.Empty : string.Empty;
+                        evt.Street = doc.RootElement.TryGetProperty("street", out var st) ? st.GetString() ?? string.Empty : string.Empty;
+                        if (doc.RootElement.TryGetProperty("timestamp", out var tsProp))
+                        {
+                            var tsText = tsProp.GetString();
+                            if (!string.IsNullOrWhiteSpace(tsText))
+                            {
+                                // Parse as UTC if no offset provided
+                                if (DateTime.TryParse(tsText, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal, out var parsed))
+                                {
+                                    evt.TimeStamp = DateTime.SpecifyKind(parsed, DateTimeKind.Utc);
+                                }
+                                else
+                                {
+                                    throw new Exception($"Failed to parse timestamp '{tsText}' in event.json");
+                                }
+                            }
+                            else
+                            {
+                                throw new Exception($"Timestamp in event.json is empty");
+                            }
+                        }
+                        else
+                        {
+                            throw new Exception($"Timestamp not found in event.json");
+                        }
+                        evt.Long = doc.RootElement.TryGetProperty("long", out var lon) ? lon.GetString() ?? string.Empty : string.Empty;
+                        evt.Lat = doc.RootElement.TryGetProperty("lat", out var lat) ? lat.GetString() ?? string.Empty : string.Empty;
+                        evt.Camera = doc.RootElement.TryGetProperty("camera", out var camera) ? int.Parse(camera.GetString()) : -1;
                         _logger.LogDebug("Parsed event.json for {FolderName}: Type={Type}", folderName, evt.Type);
                     }
                     catch (Exception ex)
                     {
                         _logger.LogWarning(ex, "Failed to read event.json in {Dir}", dir);
+                    }
+
+
+                    var eventThumbnail = Path.Combine(dir, "thumb.png");
+                    if (File.Exists(eventThumbnail))
+                    {
+                        try
+                        {
+                            evt.Thumbnail = await File.ReadAllBytesAsync(eventThumbnail, ct);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Failed to read thumb.png in {Dir}", dir);
+                        }
                     }
                 }
                 db.Events.Add(evt);
@@ -118,12 +163,19 @@ public class ClipScanner : BackgroundService
     {
         // Example: 2026-02-04_10-25-44-back.mp4
         var baseName = Path.GetFileNameWithoutExtension(fileName);
-        var parts = baseName.Split('-');
-        if (parts.Length < 4) return null;
-        var dateTimePart = string.Join('-', parts.Take(3)); // 2026-02-04_10
-        // Alternative: extract up to the camera suffix
-        var dtText = baseName.Substring(0, 19).Replace('_', ' ');
-        if (DateTime.TryParse(dtText, out var dt)) return dt;
-        return null;
+        // split on '_' and '-'
+        var parts = baseName.Split(new[] { '_', '-' }, StringSplitOptions.RemoveEmptyEntries);
+
+        // parts now contains:
+        // [0]=2026, [1]=02, [2]=04, [3]=10, [4]=24, [5]=44, [6]=back
+
+        int year = int.Parse(parts[0]);
+        int month = int.Parse(parts[1]);
+        int day = int.Parse(parts[2]);
+        int hour = int.Parse(parts[3]);
+        int minute = int.Parse(parts[4]);
+        int second = int.Parse(parts[5]);
+
+        return new DateTime(year, month, day, hour, minute, second, DateTimeKind.Utc);
     }
 }

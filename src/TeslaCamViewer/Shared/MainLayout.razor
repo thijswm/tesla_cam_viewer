@@ -1,10 +1,75 @@
 @inherits LayoutComponentBase
 
+<style>
+    .event_date {
+        text-decoration: underline;
+    }
+</style>
+
 <MudLayout>
     <MudAppBar Color="Color.Primary" Elevation="1">
         <MudText Typo="Typo.h6">Tesla Cam Viewer</MudText>
     </MudAppBar>
+
+    <MudDrawer Open="true" ClipMode="DrawerClipMode.Always" Elevation="1" Width="400px">
+        <MudDrawerContainer>
+            <MudGrid Style="margin-top:10px">
+                <MudItem xs="12">
+                    <MudText class="d-flex align-center justify-center" Typo="Typo.h6">Select Date</MudText>
+                </MudItem>
+                <MudItem xs="12">
+                    <MudDatePicker class="d-flex align-center justify-center"
+                                   Label="Select Date"
+                                   PickerVariant="PickerVariant.Static"
+                                   IsDateDisabledFunc="IsNotEventDate"
+                                   AdditionalDateClassesFunc="GetDateStyle"
+                                   DateChanged="OnDateSelected" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudText class="d-flex align-center justify-center" Typo="Typo.h6">Clips</MudText>
+                </MudItem>
+                <MudItem xs="12">
+                    <MudStack Spacing="2">
+                        @foreach (var clip in _clips)
+                        {
+                            var ts = clip.Clips.FirstOrDefault()?.Timestamp;
+
+                            <MudPaper Elevation="4" Class="teslacam-card">
+                                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="teslacam-row">
+
+                                    <!-- Thumb -->
+                                    <div class="teslacam-thumb-wrap">
+                                        <MudImage Src="@clip.Thumbnail"
+                                                  Alt="clip thumbnail"
+                                                  Class="teslacam-thumb"
+                                                  ObjectFit="ObjectFit.Cover" />
+                                    </div>
+
+                                    <!-- Info -->
+                                    <div class="teslacam-info">
+                                        <MudText Typo="Typo.h6" Class="teslacam-title">@clip.Event.Source</MudText>
+                                        <MudText Typo="Typo.body2" Class="teslacam-sub">@clip.Event.City</MudText>
+                                    </div>
+
+                                    <!-- Meta -->
+                                    <div class="teslacam-meta">
+                                        <MudText Typo="Typo.subtitle1" Class="teslacam-time">
+                                            @(ts?.ToString("HH:mm:ss") ?? "")
+                                        </MudText>
+                                        <MudText Typo="Typo.caption" Class="teslacam-day">
+                                            @(ts?.ToString("ddd") ?? "")
+                                        </MudText>
+                                    </div>
+
+                                </MudStack>
+                            </MudPaper>
+                        }
+                    </MudStack>
+                </MudItem>
+            </MudGrid>
+        </MudDrawerContainer>
+    </MudDrawer>
+
     <MudMainContent>
-        @Body
     </MudMainContent>
 </MudLayout>

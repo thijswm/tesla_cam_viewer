@@ -4,7 +4,7 @@
 
 <h1>Tesla Cam Viewer</h1>
 
-<MudTable Items="clips" Dense="true">
+@* <MudTable Items="clips" Dense="true">
     <HeaderContent>
         <MudTh>Time</MudTh>
         <MudTh>Camera</MudTh>
@@ -17,12 +17,48 @@
         <MudTd DataLabel="Path">@context.Path</MudTd>
         <MudTd DataLabel="Event">@context.Event?.FolderName</MudTd>
     </RowTemplate>
-</MudTable>
+</MudTable> *@
 
 @code {
-    private List<Clip> clips = new();
-    protected override void OnInitialized()
-    {
-        clips = Db.Clips.Include(c => c.Event).OrderByDescending(c => c.Timestamp).Take(200).ToList();
-    }
+    // private List<Clip> clips = new();
+
+    // [CascadingParameter] public DateTime? SelectedDate { get; set; }
+    // [CascadingParameter] public bool FilterSaved { get; set; }
+    // [CascadingParameter] public bool FilterSentry { get; set; }
+    // [CascadingParameter] public bool FilterRecent { get; set; }
+
+    // protected override void OnParametersSet()
+    // {
+    //     LoadClips();
+    // }
+
+    // private void LoadClips()
+    // {
+    //     var query = Db.Clips.Include(c => c.Event).AsQueryable();
+
+    //     if (SelectedDate is DateTime d)
+    //     {
+    //         var start = d.Date;
+    //         var end = start.AddDays(1);
+    //         query = query.Where(c => c.Timestamp >= start && c.Timestamp < end);
+    //     }
+
+    //     if (!(FilterSaved && FilterSentry))
+    //     {
+    //         if (FilterSaved && !FilterSentry)
+    //             query = query.Where(c => c.Event != null && c.Event.Source == "Saved");
+    //         else if (!FilterSaved && FilterSentry)
+    //             query = query.Where(c => c.Event != null && c.Event.Source == "Sentry");
+    //         else
+    //             query = query.Where(c => false);
+    //     }
+
+    //     if (FilterRecent)
+    //     {
+    //         var since = DateTime.UtcNow.AddHours(-24);
+    //         query = query.Where(c => c.Timestamp >= since);
+    //     }
+
+    //     clips = query.OrderByDescending(c => c.Timestamp).Take(200).ToList();
+    // }
 }

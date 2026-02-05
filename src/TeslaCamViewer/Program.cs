@@ -36,7 +36,9 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    Log.Information("Performing migration");
     db.Database?.Migrate();
+    Log.Information("Migration done");
 }
 
 AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);

@@ -1,6 +1,6 @@
 @using TeslaCamViewer.Shared
 
-<MudThemeProvider />
+<MudThemeProvider IsDarkMode="true" Theme="@_teslaTheme" />
 <MudDialogProvider />
 <MudSnackbarProvider />
 
@@ -14,3 +14,17 @@
         </LayoutView>
     </NotFound>
 </Router>
+
+@code {
+    MudTheme _teslaTheme = new MudTheme()
+    {
+        PaletteDark = new PaletteDark()
+        {
+            Background = "#0F1117",
+            Surface = "#1C1E26",
+            Primary = "#E82127", // Tesla red
+            TextPrimary = "#FFFFFF",
+            TextSecondary = "#A0A4B8"
+        }
+    };
+}

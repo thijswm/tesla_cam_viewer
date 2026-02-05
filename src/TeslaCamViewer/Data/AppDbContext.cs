@@ -27,5 +27,12 @@ public class Event
     public string Type { get; set; } = "unknown";         // from event.json if present
     public DateTime CreatedAt { get; set; }
     public string Source { get; set; } = "Sentry"; // or Saved
+    public string Lat { get; set; } = string.Empty;
+    public string Long { get; set; } = string.Empty;
+    public string City { get; set; } = string.Empty;
+    public string Street { get; set; } = string.Empty;
+    public int Camera { get; set; }
+    public DateTime TimeStamp { get; set; }
+    public byte[]? Thumbnail { get; set; }
     public List<Clip> Clips { get; set; } = new();
 }
