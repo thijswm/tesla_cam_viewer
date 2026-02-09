@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
+using Microsoft.EntityFrameworkCore;
 using TeslaCamViewer.Data;
 using TeslaCamViewer.Shared;
 using System.Timers;
@@ -14,6 +15,9 @@ public partial class Index : IDisposable
 
     [CascadingParameter] public ClipItem? SelectedEvent { get; set; }
 
+    private List<CameraMetadata>? cameras;
+    private bool isLoadingCameras;
+
     // Timeline properties
     private double currentTime = 0;
     private double videoDuration = 60; // Default 60 seconds, will be updated from video
@@ -21,57 +25,89 @@ public partial class Index : IDisposable
     private string currentTimeFormatted => FormatTime(currentTime);
     private string durationFormatted => FormatTime(videoDuration);
 
+    // Lightweight camera metadata without video data
+    private class CameraMetadata
+    {
+        public int Id { get; set; }
+        public string CameraName { get; set; } = string.Empty;
+        public DateTime Timestamp { get; set; }
+        public TimeSpan Duration { get; set; }
+        public int EventId { get; set; }
+    }
+
     protected override async Task OnParametersSetAsync()
     {
         if (SelectedEvent != null)
         {
+            isLoadingCameras = true;
+            StateHasChanged();
+
+            // Load camera metadata without VideoData
+            await LoadCameraMetadata();
+
+            isLoadingCameras = false;
             StateHasChanged();
 
             // Start timeline update timer
             StartTimelineUpdater();
-
-            // Get video duration from the first video
-            await Task.Delay(500); // Wait for videos to load
-            await UpdateVideoDuration();
-
-            // Initialize video playlists
-            await InitializeVideoPlaylists();
         }
         else
         {
             SelectedEvent = null;
+            cameras = null;
+            videoDuration = 60; // Reset to default
             StopTimelineUpdater();
         }
     }
 
-    private async Task InitializeVideoPlaylists()
+    private async Task LoadCameraMetadata()
     {
         try
         {
-            // Pass clip data to JavaScript for sequential playback
-            var playlistData = new Dictionary<string, List<int>>();
-
-            foreach (var camera in new[] { "front", "left_repeater", "right_repeater", "back" })
+            if (SelectedEvent?.Event?.Id == null)
             {
-                var clips = GetClipsByCamera(camera);
-                if (clips != null && clips.Count > 0)
-                {
-                    playlistData[camera] = clips.Select(c => c.Id).ToList();
-                }
+                cameras = null;
+                return;
             }
 
-            await JS.InvokeVoidAsync("initializeVideoPlaylists", playlistData);
+            // Load cameras without the VideoData to avoid loading large byte arrays
+            cameras = await Db.Cameras
+                .Where(c => c.EventId == SelectedEvent.Event.Id)
+                .Select(c => new CameraMetadata
+                {
+                    Id = c.Id,
+                    CameraName = c.CameraName,
+                    Timestamp = c.Timestamp,
+                    Duration = c.Duration,
+                    EventId = c.EventId
+                })
+                .ToListAsync();
+
+            // Set video duration to the max duration of all cameras
+            if (cameras.Any())
+            {
+                var maxDuration = cameras.Max(c => c.Duration);
+                videoDuration = maxDuration.TotalSeconds;
+                Logger.LogInformation("Loaded {Count} cameras for event {EventId}, max duration: {Duration}", 
+                    cameras.Count, SelectedEvent.Event.Id, maxDuration);
+            }
+            else
+            {
+                videoDuration = 60; // Default fallback
+                Logger.LogInformation("No cameras found for event {EventId}", SelectedEvent.Event.Id);
+            }
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Failed to initialize video playlists");
+            Logger.LogError(ex, "Failed to load camera metadata for event {EventId}", SelectedEvent?.Event?.Id);
+            cameras = null;
         }
     }
 
     private void StartTimelineUpdater()
     {
         StopTimelineUpdater();
-        updateTimer = new System.Timers.Timer(100); // Update every 100ms
+        updateTimer = new System.Timers.Timer(200); // Update every 200ms for smoother updates
         updateTimer.Elapsed += async (sender, e) => await UpdateCurrentTime();
         updateTimer.Start();
     }
@@ -92,7 +128,9 @@ public partial class Index : IDisposable
         {
             var time = await JS.InvokeAsync<double>("eval", 
                 "(() => { const v = document.querySelector('video'); return v ? v.currentTime : 0; })()");
-            if (Math.Abs(currentTime - time) > 0.5) // Only update if difference is significant
+
+            // Update if difference is significant (reduced to 0.1 seconds for smoother slider)
+            if (Math.Abs(currentTime - time) > 0.1)
             {
                 currentTime = time;
                 await InvokeAsync(StateHasChanged);
@@ -154,30 +192,23 @@ public partial class Index : IDisposable
         return $"/api/video/{clip.Id}";
     }
 
-    private Clip? GetClipByCamera(string cameraName)
+    private string GetVideoUrl(Camera camera)
     {
-        // Get the first clip for this camera, sorted by timestamp
-        return GetClipsByCamera(cameraName)?.FirstOrDefault();
+        // API endpoint to serve the stitched camera video from byte array
+        return $"/api/camera/{camera.Id}";
     }
 
-    private List<Clip>? GetClipsByCamera(string cameraName)
+    private string GetVideoUrl(CameraMetadata camera)
     {
-        // Get all clips for this camera, sorted by timestamp
-        return SelectedEvent?.Event.Clips
-            .Where(c => c.Camera.Equals(cameraName, StringComparison.OrdinalIgnoreCase))
-            .OrderBy(c => c.Timestamp)
-            .ToList();
+        // API endpoint to serve the stitched camera video from byte array
+        return $"/api/camera/{camera.Id}";
     }
 
-    private string GetVideoPlaylistUrl(string cameraName)
+    private CameraMetadata? GetCameraByName(string cameraName)
     {
-        var clips = GetClipsByCamera(cameraName);
-        if (clips == null || clips.Count == 0)
-            return string.Empty;
-
-        // Return API endpoint with clip IDs as comma-separated list
-        var clipIds = string.Join(",", clips.Select(c => c.Id));
-        return $"/api/video/playlist?ids={clipIds}";
+        // Get the camera metadata for this event (without VideoData)
+        return cameras?
+            .FirstOrDefault(c => c.CameraName.Equals(cameraName, StringComparison.OrdinalIgnoreCase));
     }
 
     private string GetCameraDisplayName(string camera)

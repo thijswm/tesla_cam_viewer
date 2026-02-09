@@ -8,7 +8,14 @@
 
     @if (SelectedEvent is not null)
     {
-        @if (SelectedEvent.Event.Clips != null && SelectedEvent.Event.Clips.Count > 0)
+        @if (isLoadingCameras)
+        {
+            <MudStack AlignItems="AlignItems.Center" Spacing="3" Class="pa-8">
+                <MudProgressCircular Indeterminate Color="Color.Primary" Size="Size.Large" />
+                <MudText Typo="Typo.h6">Loading cameras...</MudText>
+            </MudStack>
+        }
+        else if (cameras != null && cameras.Count > 0)
         {
             <!-- Timeline Seekbar -->
             <MudPaper Class="pa-3 mb-2" Elevation="3" Style="max-width: 1400px; margin: 0 auto;">
@@ -79,8 +86,8 @@
                 <MudGrid Justify="Justify.Center">
                     <MudItem xs="12" md="8">
                         @{
-                            var frontClip = GetClipByCamera("front");
-                            if (frontClip != null)
+                            var frontCamera = GetCameraByName("front");
+                            if (frontCamera != null)
                             {
                                 <MudPaper Class="pa-2" Elevation="3">
                                     <MudStack Spacing="1">
@@ -89,7 +96,7 @@
                                                controls
                                                style="width: 100%; max-height: 25vh; border-radius: 6px; background: #000;"
                                                data-camera="front">
-                                            <source src="@GetVideoUrl(frontClip)" type="video/mp4">
+                                            <source src="@GetVideoUrl(frontCamera)" type="video/mp4">
                                             Your browser does not support the video tag.
                                         </video>
                                     </MudStack>
@@ -103,8 +110,8 @@
                 <MudGrid>
                     <MudItem xs="12" md="6">
                         @{
-                            var leftClip = GetClipByCamera("left_repeater");
-                            if (leftClip != null)
+                            var leftCamera = GetCameraByName("left_repeater");
+                            if (leftCamera != null)
                             {
                                 <MudPaper Class="pa-2" Elevation="3">
                                     <MudStack Spacing="1">
@@ -113,7 +120,7 @@
                                                controls
                                                style="width: 100%; max-height: 25vh; border-radius: 6px; background: #000;"
                                                data-camera="left_repeater">
-                                            <source src="@GetVideoUrl(leftClip)" type="video/mp4">
+                                            <source src="@GetVideoUrl(leftCamera)" type="video/mp4">
                                             Your browser does not support the video tag.
                                         </video>
                                     </MudStack>
@@ -123,8 +130,8 @@
                     </MudItem>
                     <MudItem xs="12" md="6">
                         @{
-                            var rightClip = GetClipByCamera("right_repeater");
-                            if (rightClip != null)
+                            var rightCamera = GetCameraByName("left_repeater");
+                            if (rightCamera != null)
                             {
                                 <MudPaper Class="pa-2" Elevation="3">
                                     <MudStack Spacing="1">
@@ -133,7 +140,7 @@
                                                controls
                                                style="width: 100%; max-height: 25vh; border-radius: 6px; background: #000;"
                                                data-camera="right_repeater">
-                                            <source src="@GetVideoUrl(rightClip)" type="video/mp4">
+                                            <source src="@GetVideoUrl(rightCamera)" type="video/mp4">
                                             Your browser does not support the video tag.
                                         </video>
                                     </MudStack>
@@ -147,8 +154,8 @@
                 <MudGrid Justify="Justify.Center">
                     <MudItem xs="12" md="8">
                         @{
-                            var backClip = GetClipByCamera("back");
-                            if (backClip != null)
+                            var backCamera = GetCameraByName("back");
+                            if (backCamera != null)
                             {
                                 <MudPaper Class="pa-2" Elevation="3">
                                     <MudStack Spacing="1">
@@ -157,7 +164,7 @@
                                                controls
                                                style="width: 100%; max-height: 25vh; border-radius: 6px; background: #000;"
                                                data-camera="back">
-                                            <source src="@GetVideoUrl(backClip)" type="video/mp4">
+                                            <source src="@GetVideoUrl(backCamera)" type="video/mp4">
                                             Your browser does not support the video tag.
                                         </video>
                                     </MudStack>

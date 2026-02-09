@@ -69,7 +69,7 @@ app.MapGet("/api/events", async (AppDbContext db) =>
 app.MapGet("/api/clips", async (AppDbContext db) =>
     await db.Clips.OrderByDescending(c => c.Timestamp).Take(500).ToListAsync());
 
-// Serve video files
+// Serve video files from Clip paths
 app.MapGet("/api/video/{clipId:int}", async (int clipId, AppDbContext db) =>
 {
     var clip = await db.Clips.FindAsync(clipId);
@@ -86,9 +86,32 @@ app.MapGet("/api/video/{clipId:int}", async (int clipId, AppDbContext db) =>
     }
 
     Log.Information("Serving video file: {Path} for clip {ClipId}", clip.Path, clipId);
-    
+
     // Use Results.File for better range request handling and automatic stream disposal
     return Results.File(clip.Path, "video/mp4", enableRangeProcessing: true);
+});
+
+// Serve stitched camera videos from byte arrays
+app.MapGet("/api/camera/{cameraId:int}", async (int cameraId, AppDbContext db) =>
+{
+    var camera = await db.Cameras.FindAsync(cameraId);
+    if (camera == null)
+    {
+        Log.Warning("Camera {CameraId} not found in database", cameraId);
+        return Results.NotFound();
+    }
+
+    if (camera.VideoData == null || camera.VideoData.Length == 0)
+    {
+        Log.Warning("Camera {CameraId} has no video data", cameraId);
+        return Results.NotFound(new { error = "No video data available" });
+    }
+
+    Log.Information("Serving stitched video for camera {CameraId} ({CameraName}): {Size} bytes", 
+        cameraId, camera.CameraName, camera.VideoData.Length);
+
+    // Serve from byte array with range support
+    return Results.Bytes(camera.VideoData, "video/mp4", enableRangeProcessing: true);
 });
 
 app.Run();

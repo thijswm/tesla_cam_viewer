@@ -45,6 +45,7 @@ public class Camera
     public string CameraName { get; set; } = string.Empty; // back, front, left_repeater, right_repeater
     public byte[] VideoData { get; set; } = Array.Empty<byte>();
     public DateTime Timestamp { get; set; }
+    public TimeSpan Duration { get; set; }
     public int EventId { get; set; }
     public Event Event { get; set; } = null!;
 }

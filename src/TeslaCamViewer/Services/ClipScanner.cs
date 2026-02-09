@@ -203,20 +203,26 @@ public class ClipScanner : BackgroundService
                 {
                     if (mp4Files.Count == 1)
                     {
-                        // Single file - just read it
+                        // Single file - just read it and get duration
                         var videoData = await File.ReadAllBytesAsync(mp4Files[0], ct);
                         var timestamp = GetTimestampFromName(Path.GetFileName(mp4Files[0])) ?? DateTime.UtcNow;
+
+                        // Get video duration
+                        var mediaInfo = await FFProbe.AnalyseAsync(mp4Files[0], cancellationToken: ct);
+                        var duration = mediaInfo.Duration;
 
                         var camera = new Camera
                         {
                             CameraName = cameraName,
                             VideoData = videoData,
                             Timestamp = timestamp,
+                            Duration = duration,
                             EventId = evt.Id
                         };
 
                         db.Cameras.Add(camera);
-                        _logger.LogInformation("Stored single video for camera {CameraName}: {Size} bytes", cameraName, videoData.Length);
+                        _logger.LogInformation("Stored single video for camera {CameraName}: {Size} bytes, duration: {Duration}", 
+                            cameraName, videoData.Length, duration);
                     }
                     else
                     {
@@ -227,16 +233,22 @@ public class ClipScanner : BackgroundService
                         var videoData = await File.ReadAllBytesAsync(tempOutput, ct);
                         var timestamp = GetTimestampFromName(Path.GetFileName(mp4Files[0])) ?? DateTime.UtcNow;
 
+                        // Get duration of stitched video
+                        var mediaInfo = await FFProbe.AnalyseAsync(tempOutput, cancellationToken: ct);
+                        var duration = mediaInfo.Duration;
+
                         var camera = new Camera
                         {
                             CameraName = cameraName,
                             VideoData = videoData,
                             Timestamp = timestamp,
+                            Duration = duration,
                             EventId = evt.Id
                         };
 
                         db.Cameras.Add(camera);
-                        _logger.LogInformation("Stitched and stored {Count} videos for camera {CameraName}: {Size} bytes", mp4Files.Count, cameraName, videoData.Length);
+                        _logger.LogInformation("Stitched and stored {Count} videos for camera {CameraName}: {Size} bytes, duration: {Duration}", 
+                            mp4Files.Count, cameraName, videoData.Length, duration);
                     }
                 }
                 finally
