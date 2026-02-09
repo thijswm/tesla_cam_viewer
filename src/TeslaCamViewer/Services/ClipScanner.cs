@@ -3,6 +3,8 @@ using System.Diagnostics.Tracing;
 using System.Text.Json;
 using System.Xml.Linq;
 using TeslaCamViewer.Data;
+using FFMpegCore;
+using FFMpegCore.Enums;
 
 namespace TeslaCamViewer.Services;
 
@@ -131,6 +133,9 @@ public class ClipScanner : BackgroundService
                 db.Events.Add(evt);
                 eventsProcessed++;
                 _logger.LogInformation("New event detected: {FolderName} ({Source})", folderName, source);
+
+                // Save the event first to get its ID before creating cameras
+                await db.SaveChangesAsync(ct);
             }
 
             foreach (var mp4 in Directory.EnumerateFiles(dir, "*.mp4"))
@@ -149,11 +154,155 @@ public class ClipScanner : BackgroundService
                     _logger.LogTrace("Clip already indexed, skipping: {Path}", mp4);
                 }
             }
+
+            // Stitch videos and create Camera entities
+            await StitchAndStoreCameras(evt, dir, db, ct);
+
+            // Save all changes (clips + cameras) in one transaction
             await db.SaveChangesAsync(ct);
+
             _logger.LogInformation("Processed folder {FolderName}: total clips now={TotalClips}", folderName, await db.Clips.CountAsync(ct));
         }
 
         _logger.LogInformation("Scan completed for {Source}. EventsProcessed={EventsProcessed}, ClipsInserted={ClipsInserted}", source, eventsProcessed, clipsInserted);
+    }
+
+    private async Task StitchAndStoreCameras(Event evt, string dir, AppDbContext db, CancellationToken ct)
+    {
+        var cameraNames = new[] { "front", "back", "left_repeater", "right_repeater" };
+
+        foreach (var cameraName in cameraNames)
+        {
+            try
+            {
+                // Check if camera already exists for this event
+                if (await db.Cameras.AnyAsync(c => c.EventId == evt.Id && c.CameraName == cameraName, ct))
+                {
+                    _logger.LogDebug("Camera {CameraName} already exists for event {EventId}, skipping", cameraName, evt.Id);
+                    continue;
+                }
+
+                // Get all MP4 files for this camera, sorted by timestamp
+                var mp4Files = Directory.EnumerateFiles(dir, "*.mp4")
+                    .Where(f => GetCameraFromName(Path.GetFileName(f)) == cameraName)
+                    .OrderBy(f => GetTimestampFromName(Path.GetFileName(f)))
+                    .ToList();
+
+                if (!mp4Files.Any())
+                {
+                    _logger.LogDebug("No MP4 files found for camera {CameraName} in {Dir}", cameraName, dir);
+                    continue;
+                }
+
+                _logger.LogInformation("Stitching {Count} videos for camera {CameraName} in event {EventId}", mp4Files.Count, cameraName, evt.Id);
+
+                // Create temporary output file
+                var tempOutput = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid()}.mp4");
+
+                try
+                {
+                    if (mp4Files.Count == 1)
+                    {
+                        // Single file - just read it
+                        var videoData = await File.ReadAllBytesAsync(mp4Files[0], ct);
+                        var timestamp = GetTimestampFromName(Path.GetFileName(mp4Files[0])) ?? DateTime.UtcNow;
+
+                        var camera = new Camera
+                        {
+                            CameraName = cameraName,
+                            VideoData = videoData,
+                            Timestamp = timestamp,
+                            EventId = evt.Id
+                        };
+
+                        db.Cameras.Add(camera);
+                        _logger.LogInformation("Stored single video for camera {CameraName}: {Size} bytes", cameraName, videoData.Length);
+                    }
+                    else
+                    {
+                        // Multiple files - stitch them together
+                        await StitchVideos(mp4Files, tempOutput, ct);
+
+                        // Read stitched video into byte array
+                        var videoData = await File.ReadAllBytesAsync(tempOutput, ct);
+                        var timestamp = GetTimestampFromName(Path.GetFileName(mp4Files[0])) ?? DateTime.UtcNow;
+
+                        var camera = new Camera
+                        {
+                            CameraName = cameraName,
+                            VideoData = videoData,
+                            Timestamp = timestamp,
+                            EventId = evt.Id
+                        };
+
+                        db.Cameras.Add(camera);
+                        _logger.LogInformation("Stitched and stored {Count} videos for camera {CameraName}: {Size} bytes", mp4Files.Count, cameraName, videoData.Length);
+                    }
+                }
+                finally
+                {
+                    // Clean up temp file
+                    if (File.Exists(tempOutput))
+                    {
+                        try
+                        {
+                            File.Delete(tempOutput);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Failed to delete temp file {TempOutput}", tempOutput);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to stitch and store camera {CameraName} for event {EventId}", cameraName, evt.Id);
+            }
+        }
+    }
+
+    private async Task StitchVideos(List<string> inputFiles, string outputFile, CancellationToken ct)
+    {
+        // Create a temporary text file listing all input videos for FFmpeg concat
+        var concatFile = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid()}.txt");
+
+        try
+        {
+            // Write concat file
+            var lines = inputFiles.Select(f => $"file '{f.Replace("\\", "/")}'");
+            await File.WriteAllLinesAsync(concatFile, lines, ct);
+
+            _logger.LogDebug("Created concat file: {ConcatFile}", concatFile);
+
+            // Use FFmpeg to concatenate videos
+            var ffmpegArgs = $"-f concat -safe 0 -i \"{concatFile}\" -c copy \"{outputFile}\"";
+
+            await FFMpegArguments
+                .FromFileInput(concatFile, false, options => options
+                    .WithCustomArgument("-f concat")
+                    .WithCustomArgument("-safe 0"))
+                .OutputToFile(outputFile, true, options => options
+                    .CopyChannel())
+                .ProcessAsynchronously();
+
+            _logger.LogDebug("FFmpeg concatenation completed: {OutputFile}", outputFile);
+        }
+        finally
+        {
+            // Clean up concat file
+            if (File.Exists(concatFile))
+            {
+                try
+                {
+                    File.Delete(concatFile);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to delete concat file {ConcatFile}", concatFile);
+                }
+            }
+        }
     }
 
     private static string GetCameraFromName(string fileName)

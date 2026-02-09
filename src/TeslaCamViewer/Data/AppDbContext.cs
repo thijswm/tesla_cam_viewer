@@ -8,6 +8,7 @@ public class AppDbContext : DbContext
 
     public DbSet<Clip> Clips => Set<Clip>();
     public DbSet<Event> Events => Set<Event>();
+    public DbSet<Camera> Cameras => Set<Camera>();
 }
 
 public class Clip
@@ -35,4 +36,15 @@ public class Event
     public DateTime TimeStamp { get; set; }
     public byte[]? Thumbnail { get; set; }
     public List<Clip> Clips { get; set; } = new();
+    public List<Camera> Cameras { get; set; } = new();
+}
+
+public class Camera
+{
+    public int Id { get; set; }
+    public string CameraName { get; set; } = string.Empty; // back, front, left_repeater, right_repeater
+    public byte[] VideoData { get; set; } = Array.Empty<byte>();
+    public DateTime Timestamp { get; set; }
+    public int EventId { get; set; }
+    public Event Event { get; set; } = null!;
 }
