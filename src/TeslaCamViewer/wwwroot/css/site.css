@@ -2,7 +2,9 @@ body {
     font-family: system-ui, sans-serif;
 }
 
-/* === TeslaCam Clip Card === */
+/* ===============================
+   TeslaCam – Clip Cards
+   =============================== */
 
 .teslacam-card {
     position: relative;
@@ -23,7 +25,9 @@ body {
         transform: translateY(-1px);
     }
 
-/* === Row layout === */
+/* ===============================
+   Row layout
+   =============================== */
 
 .teslacam-row {
     width: 100%;
@@ -33,7 +37,9 @@ body {
     gap: 14px;
 }
 
-/* === Thumbnail === */
+/* ===============================
+   Thumbnail
+   =============================== */
 
 .teslacam-thumb-wrap {
     flex: 0 0 140px;
@@ -50,7 +56,9 @@ body {
     object-fit: cover;
 }
 
-/* === Info === */
+/* ===============================
+   Info (source + city)
+   =============================== */
 
 .teslacam-info {
     flex: 1 1 auto;
@@ -72,10 +80,20 @@ body {
     text-overflow: ellipsis;
 }
 
-/* === Meta (time / day) === */
+/* ===============================
+   Right column (time + button)
+   =============================== */
+
+.teslacam-right {
+    flex: 0 0 92px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 8px;
+}
 
 .teslacam-meta {
-    flex: 0 0 90px;
     text-align: right;
     display: flex;
     flex-direction: column;
@@ -90,5 +108,15 @@ body {
 .teslacam-day {
     color: #ff3b6b;
     font-weight: 600;
-    letter-spacing: .3px;
+    letter-spacing: 0.3px;
+}
+
+/* ===============================
+   Show button
+   =============================== */
+
+.teslacam-show {
+    border-radius: 999px !important;
+    padding: 4px 12px !important;
+    min-width: 0;
 }

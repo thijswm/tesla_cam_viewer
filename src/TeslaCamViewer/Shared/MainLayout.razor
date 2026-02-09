@@ -1,11 +1,5 @@
 @inherits LayoutComponentBase
 
-<style>
-    .event_date {
-        text-decoration: underline;
-    }
-</style>
-
 <MudLayout>
     <MudAppBar Color="Color.Primary" Elevation="1">
         <MudText Typo="Typo.h6">Tesla Cam Viewer</MudText>
@@ -47,18 +41,29 @@
 
                                     <!-- Info -->
                                     <div class="teslacam-info">
-                                        <MudText Typo="Typo.h6" Class="teslacam-title">@clip.Event.Source</MudText>
-                                        <MudText Typo="Typo.body2" Class="teslacam-sub">@clip.Event.City</MudText>
+                                        <MudText Typo="Typo.h6" Class="teslacam-title">@clip.Event?.Source</MudText>
+                                        <MudText Typo="Typo.body2" Class="teslacam-sub">@clip.Event?.City</MudText>
                                     </div>
 
-                                    <!-- Meta -->
-                                    <div class="teslacam-meta">
-                                        <MudText Typo="Typo.subtitle1" Class="teslacam-time">
-                                            @(ts?.ToString("HH:mm:ss") ?? "")
-                                        </MudText>
-                                        <MudText Typo="Typo.caption" Class="teslacam-day">
-                                            @(ts?.ToString("ddd") ?? "")
-                                        </MudText>
+                                    <!-- Right -->
+                                    <div class="teslacam-right">
+                                        <div class="teslacam-meta">
+                                            <MudText Typo="Typo.subtitle1" Class="teslacam-time">
+                                                @(ts?.ToString("HH:mm:ss") ?? "")
+                                            </MudText>
+                                            <MudText Typo="Typo.caption" Class="teslacam-day">
+                                                @(ts?.ToString("ddd") ?? "")
+                                            </MudText>
+                                        </div>
+
+                                        <MudButton OnClick="() => OnClipClicked(clip)"
+                                                   Color="Color.Primary"
+                                                   Variant="Variant.Filled"
+                                                   Size="Size.Small"
+                                                   StartIcon="@Icons.Material.Filled.PlayArrow"
+                                                   Class="teslacam-show">
+                                            Show
+                                        </MudButton>
                                     </div>
 
                                 </MudStack>
@@ -71,5 +76,19 @@
     </MudDrawer>
 
     <MudMainContent>
+        <CascadingValue Value="@SelectedClip">
+            @Body
+        </CascadingValue>
     </MudMainContent>
 </MudLayout>
+
+@code {
+    // The selected clip instance cascaded to content pages
+    public ClipItem? SelectedClip { get; set; }
+
+    private void OnClipClicked(ClipItem clipItem)
+    {
+        SelectedClip = clipItem;
+        StateHasChanged();
+    }
+}

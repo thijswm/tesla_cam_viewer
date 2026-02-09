@@ -6,13 +6,16 @@ namespace TeslaCamViewer.Shared
 {
     public partial class MainLayout
     {
-        [Inject] AppDbContext Db { get; set; }
+        [Inject] AppDbContext? Db { get; set; }
         private List<Event> _events = [];
         private List<ClipItem> _clips = [];
 
         protected override async Task OnInitializedAsync()
         {
-            _events = await Db.Events.Include(a => a.Clips).ToListAsync();
+            if (Db != null)
+            {
+                _events = await Db.Events.Include(a => a.Clips).ToListAsync();
+            }
         }
 
         private string GetDateStyle(DateTime date)

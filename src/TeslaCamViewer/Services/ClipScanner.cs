@@ -99,7 +99,14 @@ public class ClipScanner : BackgroundService
                         }
                         evt.Long = doc.RootElement.TryGetProperty("long", out var lon) ? lon.GetString() ?? string.Empty : string.Empty;
                         evt.Lat = doc.RootElement.TryGetProperty("lat", out var lat) ? lat.GetString() ?? string.Empty : string.Empty;
-                        evt.Camera = doc.RootElement.TryGetProperty("camera", out var camera) ? int.Parse(camera.GetString()) : -1;
+                        if (doc.RootElement.TryGetProperty("camera", out var camera))
+                        {
+                            if (!int.TryParse(camera.GetString(), out var camInt))
+                            {
+                                throw new Exception($"Failed to parse camera value '{camera.GetString()}' in event.json");
+                            }
+                            evt.Camera = camInt;
+                        }
                         _logger.LogDebug("Parsed event.json for {FolderName}: Type={Type}", folderName, evt.Type);
                     }
                     catch (Exception ex)

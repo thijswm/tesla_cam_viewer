@@ -1,64 +1,179 @@
 @page "/"
 @using TeslaCamViewer.Data
-@inject AppDbContext Db
+@using TeslaCamViewer.Shared
 
-<h1>Tesla Cam Viewer</h1>
+<MudContainer MaxWidth="MaxWidth.ExtraExtraLarge" Class="mt-2">
+    <MudText Typo="Typo.h5" Class="mb-2">Tesla Cam Viewer</MudText>
 
-@* <MudTable Items="clips" Dense="true">
-    <HeaderContent>
-        <MudTh>Time</MudTh>
-        <MudTh>Camera</MudTh>
-        <MudTh>Path</MudTh>
-        <MudTh>Event</MudTh>
-    </HeaderContent>
-    <RowTemplate>
-        <MudTd DataLabel="Time">@context.Timestamp.ToString("u")</MudTd>
-        <MudTd DataLabel="Camera">@context.Camera</MudTd>
-        <MudTd DataLabel="Path">@context.Path</MudTd>
-        <MudTd DataLabel="Event">@context.Event?.FolderName</MudTd>
-    </RowTemplate>
-</MudTable> *@
+    @if (SelectedClip is not null)
+    {
+        @if (isLoadingThumbnails)
+        {
+            <MudStack AlignItems="AlignItems.Center" Spacing="3" Class="pa-8">
+                <MudProgressCircular Indeterminate Color="Color.Primary" Size="Size.Large" />
+                <MudText Typo="Typo.h6">Loading clips...</MudText>
+                <MudText Typo="Typo.caption">Processing @(SelectedClip.Clips?.Count ?? 0) clips</MudText>
+            </MudStack>
+        }
+        else if (thumbnails != null && SelectedClip.Clips != null)
+        {
+            <!-- Timeline Seekbar -->
+            <MudPaper Class="pa-3 mb-2" Elevation="3" Style="max-width: 1400px; margin: 0 auto;">
+                <MudStack Spacing="1">
+                    <MudText Typo="Typo.subtitle2" Align="Align.Center">Timeline</MudText>
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                        <!-- Play/Pause Controls -->
+                        <MudIconButton Icon="@Icons.Material.Filled.PlayArrow"
+                                       Color="Color.Primary"
+                                       Size="Size.Medium"
+                                       OnClick="PlayAllVideos"
+                                       aria-label="Play All" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Pause"
+                                       Color="Color.Secondary"
+                                       Size="Size.Medium"
+                                       OnClick="PauseAllVideos"
+                                       aria-label="Pause All" />
 
-@code {
-    // private List<Clip> clips = new();
+                        <MudText Typo="Typo.caption" Style="min-width: 60px;">@currentTimeFormatted</MudText>
+                        <div style="flex: 1; position: relative;">
+                            <MudSlider T="double" 
+                                       Value="@currentTime" 
+                                       Min="0" 
+                                       Max="@videoDuration" 
+                                       Step="0.1"
+                                       Color="Color.Primary"
+                                       Variant="Variant.Filled"
+                                       ValueChanged="OnTimelineChanged"
+                                       Style="width: 100%;" />
+                            <!-- Time markers -->
+                            <div style="display: flex; justify-content: space-between; margin-top: 4px; padding: 0 8px;">
+                                @for (int i = 0; i <= GetTimeMarkerCount(); i++)
+                                {
+                                    var markerTime = (videoDuration / GetTimeMarkerCount()) * i;
+                                    <MudText Typo="Typo.caption" Style="font-size: 10px; color: rgba(255,255,255,0.6);">
+                                        @FormatTime(markerTime)
+                                    </MudText>
+                                }
+                            </div>
+                        </div>
+                        <MudText Typo="Typo.caption" Style="min-width: 60px;">@durationFormatted</MudText>
+                    </MudStack>
+                </MudStack>
+            </MudPaper>
 
-    // [CascadingParameter] public DateTime? SelectedDate { get; set; }
-    // [CascadingParameter] public bool FilterSaved { get; set; }
-    // [CascadingParameter] public bool FilterSentry { get; set; }
-    // [CascadingParameter] public bool FilterRecent { get; set; }
+            <!-- Control Buttons -->
+            <MudStack Row="true" Justify="Justify.Center" Spacing="2" Class="mb-2">
+                <MudButton Variant="Variant.Outlined" 
+                           Color="Color.Default" 
+                           Size="Size.Small"
+                           StartIcon="@Icons.Material.Filled.FastRewind"
+                           OnClick="SkipBackward">
+                    -5s
+                </MudButton>
+                <MudButton Variant="Variant.Outlined" 
+                           Color="Color.Default" 
+                           Size="Size.Small"
+                           EndIcon="@Icons.Material.Filled.FastForward"
+                           OnClick="SkipForward">
+                    +5s
+                </MudButton>
+            </MudStack>
 
-    // protected override void OnParametersSet()
-    // {
-    //     LoadClips();
-    // }
+            <!-- Tesla Camera Layout - All Videos Playing -->
+            <MudStack Spacing="2" Style="max-width: 1400px; margin: 0 auto;">
 
-    // private void LoadClips()
-    // {
-    //     var query = Db.Clips.Include(c => c.Event).AsQueryable();
+                <!-- Row 1: Front Camera -->
+                <MudGrid Justify="Justify.Center">
+                    <MudItem xs="12" md="8">
+                        @{
+                            var frontClip = GetClipByCamera("front");
+                            if (frontClip != null)
+                            {
+                                <MudPaper Class="pa-2" Elevation="3">
+                                    <MudStack Spacing="1">
+                                        <MudText Typo="Typo.subtitle1" Align="Align.Center" Style="font-weight: 600;">Front Camera</MudText>
+                                        <video controls 
+                                               style="width: 100%; max-height: 25vh; border-radius: 6px; background: #000;">
+                                            <source src="@GetVideoUrl(frontClip)" type="video/mp4">
+                                            Your browser does not support the video tag.
+                                        </video>
+                                    </MudStack>
+                                </MudPaper>
+                            }
+                        }
+                    </MudItem>
+                </MudGrid>
 
-    //     if (SelectedDate is DateTime d)
-    //     {
-    //         var start = d.Date;
-    //         var end = start.AddDays(1);
-    //         query = query.Where(c => c.Timestamp >= start && c.Timestamp < end);
-    //     }
+                <!-- Row 2: Left and Right Repeater Cameras -->
+                <MudGrid>
+                    <MudItem xs="12" md="6">
+                        @{
+                            var leftClip = GetClipByCamera("left_repeater");
+                            if (leftClip != null)
+                            {
+                                <MudPaper Class="pa-2" Elevation="3">
+                                    <MudStack Spacing="1">
+                                        <MudText Typo="Typo.subtitle1" Align="Align.Center" Style="font-weight: 600;">Left Repeater</MudText>
+                                        <video controls 
+                                               style="width: 100%; max-height: 25vh; border-radius: 6px; background: #000;">
+                                            <source src="@GetVideoUrl(leftClip)" type="video/mp4">
+                                            Your browser does not support the video tag.
+                                        </video>
+                                    </MudStack>
+                                </MudPaper>
+                            }
+                        }
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        @{
+                            var rightClip = GetClipByCamera("right_repeater");
+                            if (rightClip != null)
+                            {
+                                <MudPaper Class="pa-2" Elevation="3">
+                                    <MudStack Spacing="1">
+                                        <MudText Typo="Typo.subtitle1" Align="Align.Center" Style="font-weight: 600;">Right Repeater</MudText>
+                                        <video controls 
+                                               style="width: 100%; max-height: 25vh; border-radius: 6px; background: #000;">
+                                            <source src="@GetVideoUrl(rightClip)" type="video/mp4">
+                                            Your browser does not support the video tag.
+                                        </video>
+                                    </MudStack>
+                                </MudPaper>
+                            }
+                        }
+                    </MudItem>
+                </MudGrid>
 
-    //     if (!(FilterSaved && FilterSentry))
-    //     {
-    //         if (FilterSaved && !FilterSentry)
-    //             query = query.Where(c => c.Event != null && c.Event.Source == "Saved");
-    //         else if (!FilterSaved && FilterSentry)
-    //             query = query.Where(c => c.Event != null && c.Event.Source == "Sentry");
-    //         else
-    //             query = query.Where(c => false);
-    //     }
-
-    //     if (FilterRecent)
-    //     {
-    //         var since = DateTime.UtcNow.AddHours(-24);
-    //         query = query.Where(c => c.Timestamp >= since);
-    //     }
-
-    //     clips = query.OrderByDescending(c => c.Timestamp).Take(200).ToList();
-    // }
-}
+                <!-- Row 3: Back Camera -->
+                <MudGrid Justify="Justify.Center">
+                    <MudItem xs="12" md="8">
+                        @{
+                            var backClip = GetClipByCamera("back");
+                            if (backClip != null)
+                            {
+                                <MudPaper Class="pa-2" Elevation="3">
+                                    <MudStack Spacing="1">
+                                        <MudText Typo="Typo.subtitle1" Align="Align.Center" Style="font-weight: 600;">Back Camera</MudText>
+                                        <video controls 
+                                               style="width: 100%; max-height: 25vh; border-radius: 6px; background: #000;">
+                                            <source src="@GetVideoUrl(backClip)" type="video/mp4">
+                                            Your browser does not support the video tag.
+                                        </video>
+                                    </MudStack>
+                                </MudPaper>
+                            }
+                        }
+                    </MudItem>
+                </MudGrid>
+            </MudStack>
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Info">No clips available for this event.</MudAlert>
+        }
+    }
+    else
+    {
+        <MudAlert Severity="Severity.Normal">Select an event from the sidebar to view clips.</MudAlert>
+    }
+</MudContainer>
