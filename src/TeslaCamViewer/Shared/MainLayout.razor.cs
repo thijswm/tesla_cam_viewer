@@ -8,7 +8,7 @@ namespace TeslaCamViewer.Shared
     {
         [Inject] AppDbContext? Db { get; set; }
         private List<Event> _events = [];
-        private List<ClipItem> _clips = [];
+        private List<ClipItem> _eventsSeleccted = [];
 
         protected override async Task OnInitializedAsync()
         {
@@ -37,18 +37,13 @@ namespace TeslaCamViewer.Shared
 
         private void OnDateSelected(DateTime? dateTime)
         {
-            _clips.Clear();
+            _eventsSeleccted.Clear();
             if (dateTime.HasValue)
             {
-                var events = _events.Where(a => a.TimeStamp.Date == dateTime.Value.Date).OrderBy(a => a.TimeStamp);
-                foreach (var evt in events)
-                {
-                    var groupedClips = evt.Clips.GroupBy(a => a.Timestamp);
-                    foreach (var group in groupedClips)
-                    {
-                        _clips.Add(new ClipItem { Event = evt, Clips = group.ToList() });
-                    }
-                }
+                _eventsSeleccted = _events.Where(a => a.TimeStamp.Date == dateTime.Value.Date)
+                    .OrderBy(a => a.TimeStamp)
+                    .Select(a => new ClipItem(a))
+                    .ToList();
             }
         }
     }

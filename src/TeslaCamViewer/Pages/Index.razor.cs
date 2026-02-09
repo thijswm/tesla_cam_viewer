@@ -12,11 +12,7 @@ public partial class Index : IDisposable
     [Inject] public ILogger<Index> Logger { get; set; } = default!;
     [Inject] public IJSRuntime JS { get; set; } = default!;
 
-    [CascadingParameter] public ClipItem? SelectedClip { get; set; }
-
-    private List<KeyValuePair<Clip, string?>>? thumbnails;
-    private bool isLoadingThumbnails;
-    private Clip? selectedClip;
+    [CascadingParameter] public ClipItem? SelectedEvent { get; set; }
 
     // Timeline properties
     private double currentTime = 0;
@@ -27,14 +23,8 @@ public partial class Index : IDisposable
 
     protected override async Task OnParametersSetAsync()
     {
-        if (SelectedClip != null)
+        if (SelectedEvent != null)
         {
-            isLoadingThumbnails = true;
-            StateHasChanged();
-
-            thumbnails = await SelectedClip.GetThumbnailsForAllClipsAsync(Logger);
-
-            isLoadingThumbnails = false;
             StateHasChanged();
 
             // Start timeline update timer
@@ -43,12 +33,38 @@ public partial class Index : IDisposable
             // Get video duration from the first video
             await Task.Delay(500); // Wait for videos to load
             await UpdateVideoDuration();
+
+            // Initialize video playlists
+            await InitializeVideoPlaylists();
         }
         else
         {
-            thumbnails = null;
-            selectedClip = null;
+            SelectedEvent = null;
             StopTimelineUpdater();
+        }
+    }
+
+    private async Task InitializeVideoPlaylists()
+    {
+        try
+        {
+            // Pass clip data to JavaScript for sequential playback
+            var playlistData = new Dictionary<string, List<int>>();
+
+            foreach (var camera in new[] { "front", "left_repeater", "right_repeater", "back" })
+            {
+                var clips = GetClipsByCamera(camera);
+                if (clips != null && clips.Count > 0)
+                {
+                    playlistData[camera] = clips.Select(c => c.Id).ToList();
+                }
+            }
+
+            await JS.InvokeVoidAsync("initializeVideoPlaylists", playlistData);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to initialize video playlists");
         }
     }
 
@@ -132,12 +148,6 @@ public partial class Index : IDisposable
             return 10;
     }
 
-    private void OnClipSelected(Clip clip)
-    {
-        selectedClip = clip;
-        StateHasChanged();
-    }
-
     private string GetVideoUrl(Clip clip)
     {
         // API endpoint to serve the video file
@@ -146,12 +156,28 @@ public partial class Index : IDisposable
 
     private Clip? GetClipByCamera(string cameraName)
     {
-        return thumbnails?.FirstOrDefault(t => t.Key.Camera.Equals(cameraName, StringComparison.OrdinalIgnoreCase)).Key;
+        // Get the first clip for this camera, sorted by timestamp
+        return GetClipsByCamera(cameraName)?.FirstOrDefault();
     }
 
-    private string? GetThumbnailForClip(Clip clip)
+    private List<Clip>? GetClipsByCamera(string cameraName)
     {
-        return thumbnails?.FirstOrDefault(t => t.Key.Id == clip.Id).Value;
+        // Get all clips for this camera, sorted by timestamp
+        return SelectedEvent?.Event.Clips
+            .Where(c => c.Camera.Equals(cameraName, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(c => c.Timestamp)
+            .ToList();
+    }
+
+    private string GetVideoPlaylistUrl(string cameraName)
+    {
+        var clips = GetClipsByCamera(cameraName);
+        if (clips == null || clips.Count == 0)
+            return string.Empty;
+
+        // Return API endpoint with clip IDs as comma-separated list
+        var clipIds = string.Join(",", clips.Select(c => c.Id));
+        return $"/api/video/playlist?ids={clipIds}";
     }
 
     private string GetCameraDisplayName(string camera)

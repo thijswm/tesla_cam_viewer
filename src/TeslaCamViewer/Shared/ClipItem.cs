@@ -8,8 +8,12 @@ namespace TeslaCamViewer.Shared
 {
     public class ClipItem
     {
-        public Event? Event { get; set; }
-        public List<Clip> Clips { get; set; } = [];
+        public Event Event { get; set; }
+
+        public ClipItem(Event ev)
+        {
+            Event = ev;
+        }
 
         public string? Thumbnail
         {
@@ -35,17 +39,17 @@ namespace TeslaCamViewer.Shared
         {
             var thumbnails = new List<KeyValuePair<Clip, string?>>();
 
-            logger?.LogInformation("Starting thumbnail extraction for {ClipCount} clips in event {EventFolder}",
-                Clips?.Count ?? 0, Event?.FolderName);
+            //logger?.LogInformation("Starting thumbnail extraction for {ClipCount} clips in event {EventFolder}",
+            //    Clips?.Count ?? 0, Event?.FolderName);
 
-            foreach (var clip in Clips ?? new List<Clip>())
-            {
-                var thumb = await ExtractThumbnailFromMp4Async(clip.Path, logger);
-                thumbnails.Add(new KeyValuePair<Clip, string?>(clip, thumb));
-            }
+            //foreach (var clip in Clips ?? new List<Clip>())
+            //{
+            //    var thumb = await ExtractThumbnailFromMp4Async(clip.Path, logger);
+            //    thumbnails.Add(new KeyValuePair<Clip, string?>(clip, thumb));
+            //}
 
-            logger?.LogInformation("Completed thumbnail extraction: {SuccessCount}/{TotalCount} successful",
-                thumbnails.Count(t => t.Value != null), thumbnails.Count);
+            //logger?.LogInformation("Completed thumbnail extraction: {SuccessCount}/{TotalCount} successful",
+            //    thumbnails.Count(t => t.Value != null), thumbnails.Count);
 
             return thumbnails;
         }

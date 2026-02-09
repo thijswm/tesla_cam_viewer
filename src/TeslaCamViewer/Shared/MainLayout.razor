@@ -24,16 +24,14 @@
                 </MudItem>
                 <MudItem xs="12">
                     <MudStack Spacing="2">
-                        @foreach (var clip in _clips)
+                        @foreach (var theEvent in _eventsSeleccted)
                         {
-                            var ts = clip.Clips.FirstOrDefault()?.Timestamp;
-
                             <MudPaper Elevation="4" Class="teslacam-card">
                                 <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="teslacam-row">
 
                                     <!-- Thumb -->
                                     <div class="teslacam-thumb-wrap">
-                                        <MudImage Src="@clip.Thumbnail"
+                                        <MudImage Src="@theEvent.Thumbnail"
                                                   Alt="clip thumbnail"
                                                   Class="teslacam-thumb"
                                                   ObjectFit="ObjectFit.Cover" />
@@ -41,22 +39,22 @@
 
                                     <!-- Info -->
                                     <div class="teslacam-info">
-                                        <MudText Typo="Typo.h6" Class="teslacam-title">@clip.Event?.Source</MudText>
-                                        <MudText Typo="Typo.body2" Class="teslacam-sub">@clip.Event?.City</MudText>
+                                        <MudText Typo="Typo.h6" Class="teslacam-title">@theEvent.Event?.Source</MudText>
+                                        <MudText Typo="Typo.body2" Class="teslacam-sub">@theEvent.Event?.City</MudText>
                                     </div>
 
                                     <!-- Right -->
                                     <div class="teslacam-right">
                                         <div class="teslacam-meta">
                                             <MudText Typo="Typo.subtitle1" Class="teslacam-time">
-                                                @(ts?.ToString("HH:mm:ss") ?? "")
+                                                @(theEvent.Event.TimeStamp.ToString("HH:mm:ss") ?? "")
                                             </MudText>
                                             <MudText Typo="Typo.caption" Class="teslacam-day">
-                                                @(ts?.ToString("ddd") ?? "")
+                                                @(theEvent.Event.TimeStamp.ToString("ddd") ?? "")
                                             </MudText>
                                         </div>
 
-                                        <MudButton OnClick="() => OnClipClicked(clip)"
+                                        <MudButton OnClick="() => OnClipClicked(theEvent)"
                                                    Color="Color.Primary"
                                                    Variant="Variant.Filled"
                                                    Size="Size.Small"
@@ -76,7 +74,7 @@
     </MudDrawer>
 
     <MudMainContent>
-        <CascadingValue Value="@SelectedClip">
+        <CascadingValue Value="@SelectedEvent">
             @Body
         </CascadingValue>
     </MudMainContent>
@@ -84,11 +82,11 @@
 
 @code {
     // The selected clip instance cascaded to content pages
-    public ClipItem? SelectedClip { get; set; }
+    public ClipItem? SelectedEvent { get; set; }
 
     private void OnClipClicked(ClipItem clipItem)
     {
-        SelectedClip = clipItem;
+        SelectedEvent = clipItem;
         StateHasChanged();
     }
 }

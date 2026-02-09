@@ -5,17 +5,10 @@
 <MudContainer MaxWidth="MaxWidth.ExtraExtraLarge" Class="mt-2">
     <MudText Typo="Typo.h5" Class="mb-2">Tesla Cam Viewer</MudText>
 
-    @if (SelectedClip is not null)
+
+    @if (SelectedEvent is not null)
     {
-        @if (isLoadingThumbnails)
-        {
-            <MudStack AlignItems="AlignItems.Center" Spacing="3" Class="pa-8">
-                <MudProgressCircular Indeterminate Color="Color.Primary" Size="Size.Large" />
-                <MudText Typo="Typo.h6">Loading clips...</MudText>
-                <MudText Typo="Typo.caption">Processing @(SelectedClip.Clips?.Count ?? 0) clips</MudText>
-            </MudStack>
-        }
-        else if (thumbnails != null && SelectedClip.Clips != null)
+        @if (SelectedEvent.Event.Clips != null && SelectedEvent.Event.Clips.Count > 0)
         {
             <!-- Timeline Seekbar -->
             <MudPaper Class="pa-3 mb-2" Elevation="3" Style="max-width: 1400px; margin: 0 auto;">
@@ -36,10 +29,10 @@
 
                         <MudText Typo="Typo.caption" Style="min-width: 60px;">@currentTimeFormatted</MudText>
                         <div style="flex: 1; position: relative;">
-                            <MudSlider T="double" 
-                                       Value="@currentTime" 
-                                       Min="0" 
-                                       Max="@videoDuration" 
+                            <MudSlider T="double"
+                                       Value="@currentTime"
+                                       Min="0"
+                                       Max="@videoDuration"
                                        Step="0.1"
                                        Color="Color.Primary"
                                        Variant="Variant.Filled"
@@ -63,15 +56,15 @@
 
             <!-- Control Buttons -->
             <MudStack Row="true" Justify="Justify.Center" Spacing="2" Class="mb-2">
-                <MudButton Variant="Variant.Outlined" 
-                           Color="Color.Default" 
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Default"
                            Size="Size.Small"
                            StartIcon="@Icons.Material.Filled.FastRewind"
                            OnClick="SkipBackward">
                     -5s
                 </MudButton>
-                <MudButton Variant="Variant.Outlined" 
-                           Color="Color.Default" 
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Default"
                            Size="Size.Small"
                            EndIcon="@Icons.Material.Filled.FastForward"
                            OnClick="SkipForward">
@@ -92,8 +85,10 @@
                                 <MudPaper Class="pa-2" Elevation="3">
                                     <MudStack Spacing="1">
                                         <MudText Typo="Typo.subtitle1" Align="Align.Center" Style="font-weight: 600;">Front Camera</MudText>
-                                        <video controls 
-                                               style="width: 100%; max-height: 25vh; border-radius: 6px; background: #000;">
+                                        <video id="video-front"
+                                               controls
+                                               style="width: 100%; max-height: 25vh; border-radius: 6px; background: #000;"
+                                               data-camera="front">
                                             <source src="@GetVideoUrl(frontClip)" type="video/mp4">
                                             Your browser does not support the video tag.
                                         </video>
@@ -114,8 +109,10 @@
                                 <MudPaper Class="pa-2" Elevation="3">
                                     <MudStack Spacing="1">
                                         <MudText Typo="Typo.subtitle1" Align="Align.Center" Style="font-weight: 600;">Left Repeater</MudText>
-                                        <video controls 
-                                               style="width: 100%; max-height: 25vh; border-radius: 6px; background: #000;">
+                                        <video id="video-left_repeater"
+                                               controls
+                                               style="width: 100%; max-height: 25vh; border-radius: 6px; background: #000;"
+                                               data-camera="left_repeater">
                                             <source src="@GetVideoUrl(leftClip)" type="video/mp4">
                                             Your browser does not support the video tag.
                                         </video>
@@ -132,8 +129,10 @@
                                 <MudPaper Class="pa-2" Elevation="3">
                                     <MudStack Spacing="1">
                                         <MudText Typo="Typo.subtitle1" Align="Align.Center" Style="font-weight: 600;">Right Repeater</MudText>
-                                        <video controls 
-                                               style="width: 100%; max-height: 25vh; border-radius: 6px; background: #000;">
+                                        <video id="video-right_repeater"
+                                               controls
+                                               style="width: 100%; max-height: 25vh; border-radius: 6px; background: #000;"
+                                               data-camera="right_repeater">
                                             <source src="@GetVideoUrl(rightClip)" type="video/mp4">
                                             Your browser does not support the video tag.
                                         </video>
@@ -154,8 +153,10 @@
                                 <MudPaper Class="pa-2" Elevation="3">
                                     <MudStack Spacing="1">
                                         <MudText Typo="Typo.subtitle1" Align="Align.Center" Style="font-weight: 600;">Back Camera</MudText>
-                                        <video controls 
-                                               style="width: 100%; max-height: 25vh; border-radius: 6px; background: #000;">
+                                        <video id="video-back"
+                                               controls
+                                               style="width: 100%; max-height: 25vh; border-radius: 6px; background: #000;"
+                                               data-camera="back">
                                             <source src="@GetVideoUrl(backClip)" type="video/mp4">
                                             Your browser does not support the video tag.
                                         </video>
@@ -166,10 +167,6 @@
                     </MudItem>
                 </MudGrid>
             </MudStack>
-        }
-        else
-        {
-            <MudAlert Severity="Severity.Info">No clips available for this event.</MudAlert>
         }
     }
     else
