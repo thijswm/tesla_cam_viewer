@@ -8,7 +8,7 @@ namespace TeslaCamViewer.Shared
     {
         [Inject] AppDbContext? Db { get; set; }
         private List<Event> _events = [];
-        private List<ClipItem> _eventsSeleccted = [];
+        private List<ClipItem> _eventsSelected = [];
 
         protected override async Task OnInitializedAsync()
         {
@@ -37,14 +37,20 @@ namespace TeslaCamViewer.Shared
 
         private void OnDateSelected(DateTime? dateTime)
         {
-            _eventsSeleccted.Clear();
+            // Clear selected event first to stop videos immediately
+            SelectedEvent = null;
+            StateHasChanged(); // Force UI update to stop videos
+
+            _eventsSelected.Clear();
             if (dateTime.HasValue)
             {
-                _eventsSeleccted = _events.Where(a => a.TimeStamp.Date == dateTime.Value.Date)
+                _eventsSelected = _events.Where(a => a.TimeStamp.Date == dateTime.Value.Date)
                     .OrderBy(a => a.TimeStamp)
                     .Select(a => new ClipItem(a))
                     .ToList();
             }
+
+            StateHasChanged(); // Update UI with new event list
         }
     }
 }

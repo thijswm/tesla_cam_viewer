@@ -99,8 +99,8 @@ public class ClipScanner : BackgroundService
                         {
                             throw new Exception($"Timestamp not found in event.json");
                         }
-                        evt.Long = doc.RootElement.TryGetProperty("long", out var lon) ? lon.GetString() ?? string.Empty : string.Empty;
-                        evt.Lat = doc.RootElement.TryGetProperty("lat", out var lat) ? lat.GetString() ?? string.Empty : string.Empty;
+                        evt.Long = doc.RootElement.TryGetProperty("est_lon", out var lon) ? lon.GetString() ?? string.Empty : string.Empty;
+                        evt.Lat = doc.RootElement.TryGetProperty("est_lat", out var lat) ? lat.GetString() ?? string.Empty : string.Empty;
                         if (doc.RootElement.TryGetProperty("camera", out var camera))
                         {
                             if (!int.TryParse(camera.GetString(), out var camInt))

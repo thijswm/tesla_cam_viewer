@@ -17,6 +17,7 @@ public partial class Index : IDisposable
 
     private List<CameraMetadata>? cameras;
     private bool isLoadingCameras;
+    private bool isPlaying = false;
 
     // Timeline properties
     private double currentTime = 0;
@@ -37,10 +38,27 @@ public partial class Index : IDisposable
 
     protected override async Task OnParametersSetAsync()
     {
+        // Stop timer immediately when switching events for better responsiveness
+        StopTimelineUpdater();
+
         if (SelectedEvent != null)
         {
+            // Reset state
+            isPlaying = false;
+            currentTime = 0;
+
             isLoadingCameras = true;
             StateHasChanged();
+
+            // Pause all videos from previous event
+            try
+            {
+                await JS.InvokeVoidAsync("eval", "document.querySelectorAll('video').forEach(v => { v.pause(); v.currentTime = 0; })");
+            }
+            catch
+            {
+                // Ignore errors if no videos exist yet
+            }
 
             // Load camera metadata without VideoData
             await LoadCameraMetadata();
@@ -48,15 +66,63 @@ public partial class Index : IDisposable
             isLoadingCameras = false;
             StateHasChanged();
 
-            // Start timeline update timer
+            // Start timeline update timer for new event
             StartTimelineUpdater();
+
+            // Initialize map with event location
+            await InitializeEventMap();
         }
         else
         {
             SelectedEvent = null;
             cameras = null;
             videoDuration = 60; // Reset to default
-            StopTimelineUpdater();
+            currentTime = 0;
+            isPlaying = false;
+        }
+    }
+
+    private async Task InitializeEventMap()
+    {
+        try
+        {
+            if (SelectedEvent?.Event == null) 
+            {
+                Logger.LogWarning("Cannot initialize map - no event selected");
+                return;
+            }
+
+            Logger.LogInformation("Attempting to initialize map for event {EventId}, Lat={Lat}, Long={Long}", 
+                SelectedEvent.Event.Id, SelectedEvent.Event.Lat, SelectedEvent.Event.Long);
+
+            // Parse latitude and longitude from strings
+            if (double.TryParse(SelectedEvent.Event.Lat, System.Globalization.NumberStyles.Any, 
+                System.Globalization.CultureInfo.InvariantCulture, out var lat) &&
+                double.TryParse(SelectedEvent.Event.Long, System.Globalization.NumberStyles.Any, 
+                System.Globalization.CultureInfo.InvariantCulture, out var lon))
+            {
+                // Give the DOM more time to render the map container
+                await Task.Delay(300);
+
+                var success = await JS.InvokeAsync<bool>("initializeMap", "event-map", lat, lon);
+                if (success)
+                {
+                    Logger.LogInformation("Map initialized successfully for event at {Lat}, {Lon}", lat, lon);
+                }
+                else
+                {
+                    Logger.LogWarning("Map initialization returned false");
+                }
+            }
+            else
+            {
+                Logger.LogWarning("Invalid coordinates for event {EventId}: Lat={Lat}, Long={Long}", 
+                    SelectedEvent.Event.Id, SelectedEvent.Event.Lat, SelectedEvent.Event.Long);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to initialize event map");
         }
     }
 
@@ -142,24 +208,6 @@ public partial class Index : IDisposable
         }
     }
 
-    private async Task UpdateVideoDuration()
-    {
-        try
-        {
-            var duration = await JS.InvokeAsync<double>("eval", 
-                "(() => { const v = document.querySelector('video'); return v ? v.duration : 60; })()");
-            if (!double.IsNaN(duration) && duration > 0)
-            {
-                videoDuration = duration;
-                await InvokeAsync(StateHasChanged);
-            }
-        }
-        catch
-        {
-            // Use default duration if unable to get from video
-        }
-    }
-
     private async Task OnTimelineChanged(double newTime)
     {
         currentTime = newTime;
@@ -186,18 +234,6 @@ public partial class Index : IDisposable
             return 10;
     }
 
-    private string GetVideoUrl(Clip clip)
-    {
-        // API endpoint to serve the video file
-        return $"/api/video/{clip.Id}";
-    }
-
-    private string GetVideoUrl(Camera camera)
-    {
-        // API endpoint to serve the stitched camera video from byte array
-        return $"/api/camera/{camera.Id}";
-    }
-
     private string GetVideoUrl(CameraMetadata camera)
     {
         // API endpoint to serve the stitched camera video from byte array
@@ -211,26 +247,50 @@ public partial class Index : IDisposable
             .FirstOrDefault(c => c.CameraName.Equals(cameraName, StringComparison.OrdinalIgnoreCase));
     }
 
-    private string GetCameraDisplayName(string camera)
+    private bool IsEventCamera(string cameraName)
     {
-        return camera.ToLowerInvariant() switch
+        // Check if this camera triggered the event based on Event.Camera integer
+        // 1 = front
+        // 2 = back
+        // 3 = left_repeater
+        // 4 = right_repeater
+        // 5 = either left_repeater or right_repeater (both get red border)
+        if (SelectedEvent?.Event == null) return false;
+
+        return SelectedEvent.Event.Camera switch
         {
-            "front" => "Front",
-            "back" => "Back",
-            "left_repeater" => "Left Repeater",
-            "right_repeater" => "Right Repeater",
-            _ => camera
+            1 => cameraName.Equals("front", StringComparison.OrdinalIgnoreCase),
+            2 => cameraName.Equals("back", StringComparison.OrdinalIgnoreCase),
+            3 => cameraName.Equals("left_repeater", StringComparison.OrdinalIgnoreCase),
+            4 => cameraName.Equals("right_repeater", StringComparison.OrdinalIgnoreCase),
+            5 => cameraName.Equals("left_repeater", StringComparison.OrdinalIgnoreCase) || 
+                 cameraName.Equals("right_repeater", StringComparison.OrdinalIgnoreCase),
+            _ => false
         };
+    }
+
+    private async Task TogglePlayPause()
+    {
+        if (isPlaying)
+        {
+            await PauseAllVideos();
+        }
+        else
+        {
+            await PlayAllVideos();
+        }
     }
 
     private async Task PlayAllVideos()
     {
         await JS.InvokeVoidAsync("eval", "document.querySelectorAll('video').forEach(v => v.play())");
+        isPlaying = true;
     }
 
     private async Task PauseAllVideos()
     {
         await JS.InvokeVoidAsync("eval", "document.querySelectorAll('video').forEach(v => v.pause())");
+        isPlaying = false;
     }
 
     private async Task SkipForward()
@@ -246,5 +306,15 @@ public partial class Index : IDisposable
     public void Dispose()
     {
         StopTimelineUpdater();
+
+        // Clean up map
+        try
+        {
+            JS.InvokeVoidAsync("destroyMap");
+        }
+        catch
+        {
+            // Ignore errors during disposal
+        }
     }
 }

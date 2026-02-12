@@ -15,24 +15,65 @@
                 <MudText Typo="Typo.h6">Loading cameras...</MudText>
             </MudStack>
         }
-        else if (cameras != null && cameras.Count > 0)
+        else
         {
-            <!-- Timeline Seekbar -->
-            <MudPaper Class="pa-3 mb-2" Elevation="3" Style="max-width: 1400px; margin: 0 auto;">
-                <MudStack Spacing="1">
+            <!-- Two-column layout: Map on left, Videos on right -->
+            <MudGrid Spacing="2" Style="max-width: 1600px; margin: 0 auto;">
+
+                <!-- Left Column: Event Location Map -->
+                @if (!string.IsNullOrEmpty(SelectedEvent?.Event?.Lat) && !string.IsNullOrEmpty(SelectedEvent?.Event?.Long))
+                {
+                    <MudItem xs="12" md="4" lg="3">
+                        <MudPaper Class="pa-3" Elevation="3" Style="position: sticky; top: 10px;">
+                            <MudStack Spacing="2">
+                                <MudText Typo="Typo.subtitle2" Align="Align.Center">Event Location</MudText>
+                                <div id="event-map" style="height: 400px; width: 100%; border-radius: 6px;"></div>
+                                @if (!string.IsNullOrEmpty(SelectedEvent?.Event?.City))
+                                {
+                                    <MudText Typo="Typo.caption" Align="Align.Center" Color="Color.Secondary">
+                                        @SelectedEvent.Event.City
+                                    </MudText>
+                                }
+                                @if (!string.IsNullOrEmpty(SelectedEvent?.Event?.Street))
+                                {
+                                    <MudText Typo="Typo.caption" Align="Align.Center" Color="Color.Secondary">
+                                        @SelectedEvent.Event.Street
+                                    </MudText>
+                                }
+                            </MudStack>
+                        </MudPaper>
+                    </MudItem>
+                }
+
+                <!-- Right Column: Timeline and Videos -->
+                <MudItem xs="12" md="@(!string.IsNullOrEmpty(SelectedEvent?.Event?.Lat) && !string.IsNullOrEmpty(SelectedEvent?.Event?.Long) ? 8 : 12)" 
+                         lg="@(!string.IsNullOrEmpty(SelectedEvent?.Event?.Lat) && !string.IsNullOrEmpty(SelectedEvent?.Event?.Long) ? 9 : 12)">
+
+            @if (cameras != null && cameras.Count > 0)
+            {
+                <!-- Timeline Seekbar -->
+                <MudPaper Class="pa-3 mb-2" Elevation="3">
+                    <MudStack Spacing="1">
                     <MudText Typo="Typo.subtitle2" Align="Align.Center">Timeline</MudText>
                     <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-                        <!-- Play/Pause Controls -->
-                        <MudIconButton Icon="@Icons.Material.Filled.PlayArrow"
-                                       Color="Color.Primary"
+                        <!-- Playback Controls -->
+                        <MudIconButton Icon="@Icons.Material.Filled.FastRewind"
+                                       Color="Color.Default"
                                        Size="Size.Medium"
-                                       OnClick="PlayAllVideos"
-                                       aria-label="Play All" />
-                        <MudIconButton Icon="@Icons.Material.Filled.Pause"
-                                       Color="Color.Secondary"
+                                       OnClick="SkipBackward"
+                                       aria-label="Skip backward 5 seconds" />
+
+                        <MudIconButton Icon="@(isPlaying ? Icons.Material.Filled.Pause : Icons.Material.Filled.PlayArrow)"
+                                       Color="@(isPlaying ? Color.Secondary : Color.Primary)"
                                        Size="Size.Medium"
-                                       OnClick="PauseAllVideos"
-                                       aria-label="Pause All" />
+                                       OnClick="TogglePlayPause"
+                                       aria-label="@(isPlaying ? "Pause" : "Play")" />
+
+                        <MudIconButton Icon="@Icons.Material.Filled.FastForward"
+                                       Color="Color.Default"
+                                       Size="Size.Medium"
+                                       OnClick="SkipForward"
+                                       aria-label="Skip forward 5 seconds" />
 
                         <MudText Typo="Typo.caption" Style="min-width: 60px;">@currentTimeFormatted</MudText>
                         <div style="flex: 1; position: relative;">
@@ -61,26 +102,8 @@
                 </MudStack>
             </MudPaper>
 
-            <!-- Control Buttons -->
-            <MudStack Row="true" Justify="Justify.Center" Spacing="2" Class="mb-2">
-                <MudButton Variant="Variant.Outlined"
-                           Color="Color.Default"
-                           Size="Size.Small"
-                           StartIcon="@Icons.Material.Filled.FastRewind"
-                           OnClick="SkipBackward">
-                    -5s
-                </MudButton>
-                <MudButton Variant="Variant.Outlined"
-                           Color="Color.Default"
-                           Size="Size.Small"
-                           EndIcon="@Icons.Material.Filled.FastForward"
-                           OnClick="SkipForward">
-                    +5s
-                </MudButton>
-            </MudStack>
-
             <!-- Tesla Camera Layout - All Videos Playing -->
-            <MudStack Spacing="2" Style="max-width: 1400px; margin: 0 auto;">
+            <MudStack Spacing="2">
 
                 <!-- Row 1: Front Camera -->
                 <MudGrid Justify="Justify.Center">
@@ -89,7 +112,8 @@
                             var frontCamera = GetCameraByName("front");
                             if (frontCamera != null)
                             {
-                                <MudPaper Class="pa-2" Elevation="3">
+                                var borderStyle = IsEventCamera("front") ? "border: 3px solid red;" : "";
+                                <MudPaper Class="pa-2" Elevation="3" Style="@borderStyle">
                                     <MudStack Spacing="1">
                                         <MudText Typo="Typo.subtitle1" Align="Align.Center" Style="font-weight: 600;">Front Camera</MudText>
                                         <video id="video-front"
@@ -113,7 +137,8 @@
                             var leftCamera = GetCameraByName("left_repeater");
                             if (leftCamera != null)
                             {
-                                <MudPaper Class="pa-2" Elevation="3">
+                                var borderStyle = IsEventCamera("left_repeater") ? "border: 3px solid red;" : "";
+                                <MudPaper Class="pa-2" Elevation="3" Style="@borderStyle">
                                     <MudStack Spacing="1">
                                         <MudText Typo="Typo.subtitle1" Align="Align.Center" Style="font-weight: 600;">Left Repeater</MudText>
                                         <video id="video-left_repeater"
@@ -130,10 +155,11 @@
                     </MudItem>
                     <MudItem xs="12" md="6">
                         @{
-                            var rightCamera = GetCameraByName("left_repeater");
+                            var rightCamera = GetCameraByName("right_repeater");
                             if (rightCamera != null)
                             {
-                                <MudPaper Class="pa-2" Elevation="3">
+                                var borderStyle = IsEventCamera("right_repeater") ? "border: 3px solid red;" : "";
+                                <MudPaper Class="pa-2" Elevation="3" Style="@borderStyle">
                                     <MudStack Spacing="1">
                                         <MudText Typo="Typo.subtitle1" Align="Align.Center" Style="font-weight: 600;">Right Repeater</MudText>
                                         <video id="video-right_repeater"
@@ -157,7 +183,8 @@
                             var backCamera = GetCameraByName("back");
                             if (backCamera != null)
                             {
-                                <MudPaper Class="pa-2" Elevation="3">
+                                var borderStyle = IsEventCamera("back") ? "border: 3px solid red;" : "";
+                                <MudPaper Class="pa-2" Elevation="3" Style="@borderStyle">
                                     <MudStack Spacing="1">
                                         <MudText Typo="Typo.subtitle1" Align="Align.Center" Style="font-weight: 600;">Back Camera</MudText>
                                         <video id="video-back"
@@ -174,6 +201,13 @@
                     </MudItem>
                 </MudGrid>
             </MudStack>
+            }
+            else
+            {
+                <MudAlert Severity="Severity.Info">No camera videos available for this event yet. They may still be processing.</MudAlert>
+            }
+                </MudItem>
+            </MudGrid>
         }
     }
     else
