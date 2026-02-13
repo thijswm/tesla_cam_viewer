@@ -5,6 +5,8 @@ using System.Xml.Linq;
 using TeslaCamViewer.Data;
 using FFMpegCore;
 using FFMpegCore.Enums;
+using Minio;
+using Minio.DataModel.Args;
 
 namespace TeslaCamViewer.Services;
 
@@ -12,20 +14,31 @@ public class ClipScanner : BackgroundService
 {
     private readonly ILogger<ClipScanner> _logger;
     private readonly IServiceProvider _sp;
+    private readonly IMinioClient _minio;
+    private readonly IConfiguration _config;
     private readonly string _sentryPath;
     private readonly string _savedPath;
+    private readonly string _minioBucket;
 
-    public ClipScanner(ILogger<ClipScanner> logger, IServiceProvider sp, IConfiguration config)
+    public ClipScanner(ILogger<ClipScanner> logger, IServiceProvider sp, IMinioClient minio, IConfiguration config)
     {
         _logger = logger;
         _sp = sp;
+        _minio = minio;
+        _config = config;
         _sentryPath = config["TeslaCam:SentryClipsPath"] ?? "/mnt/sentry";
         _savedPath = config["TeslaCam:SavedClipsPath"] ?? "/mnt/saved";
+        _minioBucket = config["MinIO:BucketName"] ?? "teslacam-videos";
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("ClipScanner started, SentryPath={SentryPath}, SavedPath={SavedPath}", _sentryPath, _savedPath);
+        _logger.LogInformation("ClipScanner started, SentryPath={SentryPath}, SavedPath={SavedPath}, MinIOBucket={Bucket}", 
+            _sentryPath, _savedPath, _minioBucket);
+
+        // Ensure MinIO bucket exists
+        await EnsureBucketExists(stoppingToken);
+
         while (!stoppingToken.IsCancellationRequested)
         {
             try
@@ -39,6 +52,30 @@ public class ClipScanner : BackgroundService
             }
 
             await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
+        }
+    }
+
+    private async Task EnsureBucketExists(CancellationToken ct)
+    {
+        try
+        {
+            var bucketExists = await _minio.BucketExistsAsync(new BucketExistsArgs()
+                .WithBucket(_minioBucket), ct);
+
+            if (!bucketExists)
+            {
+                await _minio.MakeBucketAsync(new MakeBucketArgs()
+                    .WithBucket(_minioBucket), ct);
+                _logger.LogInformation("Created MinIO bucket: {Bucket}", _minioBucket);
+            }
+            else
+            {
+                _logger.LogInformation("MinIO bucket exists: {Bucket}", _minioBucket);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to ensure MinIO bucket exists");
         }
     }
 
@@ -203,52 +240,63 @@ public class ClipScanner : BackgroundService
                 {
                     if (mp4Files.Count == 1)
                     {
-                        // Single file - just read it and get duration
-                        var videoData = await File.ReadAllBytesAsync(mp4Files[0], ct);
+                        // Single file - upload directly to MinIO
                         var timestamp = GetTimestampFromName(Path.GetFileName(mp4Files[0])) ?? DateTime.UtcNow;
 
                         // Get video duration
                         var mediaInfo = await FFProbe.AnalyseAsync(mp4Files[0], cancellationToken: ct);
                         var duration = mediaInfo.Duration;
+                        var fileInfo = new FileInfo(mp4Files[0]);
+
+                        // Upload to MinIO
+                        var minioPath = $"events/{evt.FolderName}/{cameraName}.mp4";
+                        await UploadToMinio(mp4Files[0], minioPath, ct);
 
                         var camera = new Camera
                         {
                             CameraName = cameraName,
-                            VideoData = videoData,
+                            MinioPath = minioPath,
+                            BucketName = _minioBucket,
                             Timestamp = timestamp,
                             Duration = duration,
+                            FileSize = fileInfo.Length,
                             EventId = evt.Id
                         };
 
                         db.Cameras.Add(camera);
-                        _logger.LogInformation("Stored single video for camera {CameraName}: {Size} bytes, duration: {Duration}", 
-                            cameraName, videoData.Length, duration);
+                        _logger.LogInformation("Uploaded single video for camera {CameraName}: {Size} bytes, duration: {Duration}", 
+                            cameraName, fileInfo.Length, duration);
                     }
                     else
                     {
                         // Multiple files - stitch them together
                         await StitchVideos(mp4Files, tempOutput, ct);
 
-                        // Read stitched video into byte array
-                        var videoData = await File.ReadAllBytesAsync(tempOutput, ct);
                         var timestamp = GetTimestampFromName(Path.GetFileName(mp4Files[0])) ?? DateTime.UtcNow;
 
                         // Get duration of stitched video
                         var mediaInfo = await FFProbe.AnalyseAsync(tempOutput, cancellationToken: ct);
                         var duration = mediaInfo.Duration;
+                        var fileInfo = new FileInfo(tempOutput);
+
+                        // Upload stitched video to MinIO
+                        var minioPath = $"events/{evt.FolderName}/{cameraName}.mp4";
+                        await UploadToMinio(tempOutput, minioPath, ct);
 
                         var camera = new Camera
                         {
                             CameraName = cameraName,
-                            VideoData = videoData,
+                            MinioPath = minioPath,
+                            BucketName = _minioBucket,
                             Timestamp = timestamp,
                             Duration = duration,
+                            FileSize = fileInfo.Length,
                             EventId = evt.Id
                         };
 
                         db.Cameras.Add(camera);
-                        _logger.LogInformation("Stitched and stored {Count} videos for camera {CameraName}: {Size} bytes, duration: {Duration}", 
-                            mp4Files.Count, cameraName, videoData.Length, duration);
+                        _logger.LogInformation("Stitched and uploaded {Count} videos for camera {CameraName}: {Size} bytes, duration: {Duration}", 
+                            mp4Files.Count, cameraName, fileInfo.Length, duration);
                     }
                 }
                 finally
@@ -271,6 +319,30 @@ public class ClipScanner : BackgroundService
             {
                 _logger.LogError(ex, "Failed to stitch and store camera {CameraName} for event {EventId}", cameraName, evt.Id);
             }
+        }
+    }
+
+    private async Task UploadToMinio(string filePath, string minioPath, CancellationToken ct)
+    {
+        try
+        {
+            _logger.LogDebug("Uploading {FilePath} to MinIO bucket {Bucket} as {Path}", 
+                filePath, _minioBucket, minioPath);
+
+            using var fileStream = File.OpenRead(filePath);
+            await _minio.PutObjectAsync(new PutObjectArgs()
+                .WithBucket(_minioBucket)
+                .WithObject(minioPath)
+                .WithStreamData(fileStream)
+                .WithObjectSize(fileStream.Length)
+                .WithContentType("video/mp4"), ct);
+
+            _logger.LogInformation("Successfully uploaded to MinIO: {Path}", minioPath);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to upload to MinIO: {Path}", minioPath);
+            throw;
         }
     }
 

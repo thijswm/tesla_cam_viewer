@@ -43,9 +43,11 @@ public class Camera
 {
     public int Id { get; set; }
     public string CameraName { get; set; } = string.Empty; // back, front, left_repeater, right_repeater
-    public byte[] VideoData { get; set; } = Array.Empty<byte>();
+    public string MinioPath { get; set; } = string.Empty; // Path/key in MinIO bucket (e.g., "events/2026-02-04/front.mp4")
+    public string BucketName { get; set; } = "teslacam-videos"; // MinIO bucket name
     public DateTime Timestamp { get; set; }
     public TimeSpan Duration { get; set; }
+    public long FileSize { get; set; } // File size in bytes
     public int EventId { get; set; }
     public Event Event { get; set; } = null!;
 }

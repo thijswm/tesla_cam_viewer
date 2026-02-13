@@ -4,6 +4,8 @@ using TeslaCamViewer.Services;
 using MudBlazor.Services;
 using Serilog;
 using FFMpegCore;
+using Minio;
+using Minio.DataModel.Args;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -27,6 +29,22 @@ Log.Information("Starting TeslaCamViewer");
 
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
+
+// Configure MinIO client
+builder.Services.AddSingleton<IMinioClient>(sp =>
+{
+    var config = builder.Configuration.GetSection("MinIO");
+    var endpoint = config["Endpoint"] ?? "localhost:9000";
+    var accessKey = config["AccessKey"] ?? "minioadmin";
+    var secretKey = config["SecretKey"] ?? "minioadmin";
+    var useSSL = config.GetValue<bool>("UseSSL");
+
+    return new MinioClient()
+        .WithEndpoint(endpoint)
+        .WithCredentials(accessKey, secretKey)
+        .WithSSL(useSSL)
+        .Build();
+});
 
 builder.Services.AddMudServices();
 
@@ -91,8 +109,8 @@ app.MapGet("/api/video/{clipId:int}", async (int clipId, AppDbContext db) =>
     return Results.File(clip.Path, "video/mp4", enableRangeProcessing: true);
 });
 
-// Serve stitched camera videos from byte arrays
-app.MapGet("/api/camera/{cameraId:int}", async (int cameraId, AppDbContext db) =>
+// Serve stitched camera videos from MinIO
+app.MapGet("/api/camera/{cameraId:int}", async (int cameraId, AppDbContext db, IMinioClient minio) =>
 {
     var camera = await db.Cameras.FindAsync(cameraId);
     if (camera == null)
@@ -101,17 +119,33 @@ app.MapGet("/api/camera/{cameraId:int}", async (int cameraId, AppDbContext db) =
         return Results.NotFound();
     }
 
-    if (camera.VideoData == null || camera.VideoData.Length == 0)
+    if (string.IsNullOrWhiteSpace(camera.MinioPath))
     {
-        Log.Warning("Camera {CameraId} has no video data", cameraId);
-        return Results.NotFound(new { error = "No video data available" });
+        Log.Warning("Camera {CameraId} has no MinIO path", cameraId);
+        return Results.NotFound(new { error = "No video path available" });
     }
 
-    Log.Information("Serving stitched video for camera {CameraId} ({CameraName}): {Size} bytes", 
-        cameraId, camera.CameraName, camera.VideoData.Length);
+    try
+    {
+        Log.Information("Streaming video from MinIO for camera {CameraId} ({CameraName}): {Path}", 
+            cameraId, camera.CameraName, camera.MinioPath);
 
-    // Serve from byte array with range support
-    return Results.Bytes(camera.VideoData, "video/mp4", enableRangeProcessing: true);
+        // Stream from MinIO
+        var memoryStream = new MemoryStream();
+        await minio.GetObjectAsync(new GetObjectArgs()
+            .WithBucket(camera.BucketName)
+            .WithObject(camera.MinioPath)
+            .WithCallbackStream(stream => stream.CopyTo(memoryStream)));
+
+        memoryStream.Position = 0;
+
+        return Results.Stream(memoryStream, "video/mp4", enableRangeProcessing: true);
+    }
+    catch (Exception ex)
+    {
+        Log.Error(ex, "Failed to stream video from MinIO for camera {CameraId}", cameraId);
+        return Results.Problem("Failed to retrieve video from storage");
+    }
 });
 
 app.Run();

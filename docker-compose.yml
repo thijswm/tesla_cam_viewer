@@ -10,16 +10,43 @@ services:
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U tesla -d tesla_cam"]
+      test: [ "CMD-SHELL", "pg_isready -U tesla -d tesla_cam" ]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 10s
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: minio123
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c " set -e; rm -rf /root/.mc; echo 'Waiting for MinIO...'; until mc alias set myminio http://minio:9000 $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD}; do
+        echo 'MinIO not ready or creds wrong, retrying...';
+        sleep 2;
+      done; mc mb -p myminio/tesla-cam || true; mc anonymous set none myminio/tesla-cam; mc ls myminio; echo 'Done.'; "
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: minio123
+    restart: "no"
   app:
     build:
       context: ./src/TeslaCamViewer
     depends_on:
       db:
+        condition: service_healthy
+      minio:
         condition: service_healthy
     environment:
       - ASPNETCORE_URLS=http://0.0.0.0:8080
@@ -28,15 +55,7 @@ services:
       - TeslaCam__SentryClipsPath=${SENTRY_CLIPS_PATH}
       - TeslaCam__SavedClipsPath=${SAVED_CLIPS_PATH}
     ports:
-      - "8080:8080"
-    volumes:
-      - type: bind
-        source: ${SENTRY_CLIPS_PATH}
-        target: /mnt/sentry
-        read_only: true
-      - type: bind
-        source: ${SAVED_CLIPS_PATH}
-        target: /mnt/saved
-        read_only: true
+      - "9002:8080"
 volumes:
   db_data:
+  minio_data:
