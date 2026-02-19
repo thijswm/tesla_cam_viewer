@@ -212,7 +212,7 @@ public class ClipScanner : BackgroundService
         {
             try
             {
-                // Check if camera already exists for this event
+                // Check if camera already exists for this event (quick DB check)
                 if (await db.Cameras.AnyAsync(c => c.EventId == evt.Id && c.CameraName == cameraName, ct))
                 {
                     _logger.LogDebug("Camera {CameraName} already exists for event {EventId}, skipping", cameraName, evt.Id);
@@ -231,93 +231,96 @@ public class ClipScanner : BackgroundService
                     continue;
                 }
 
-                _logger.LogInformation("Stitching {Count} videos for camera {CameraName} in event {EventId}", mp4Files.Count, cameraName, evt.Id);
+                _logger.LogInformation("Processing {Count} videos for camera {CameraName} in event {EventId}", mp4Files.Count, cameraName, evt.Id);
 
-                // Create temporary output file
-                var tempOutput = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid()}.mp4");
+                // Process video and upload to MinIO (WITHOUT holding DB connection)
+                var cameraData = await ProcessAndUploadCamera(evt, cameraName, mp4Files, ct);
 
-                try
+                if (cameraData != null)
                 {
-                    if (mp4Files.Count == 1)
-                    {
-                        // Single file - upload directly to MinIO
-                        var timestamp = GetTimestampFromName(Path.GetFileName(mp4Files[0])) ?? DateTime.UtcNow;
-
-                        // Get video duration
-                        var mediaInfo = await FFProbe.AnalyseAsync(mp4Files[0], cancellationToken: ct);
-                        var duration = mediaInfo.Duration;
-                        var fileInfo = new FileInfo(mp4Files[0]);
-
-                        // Upload to MinIO
-                        var minioPath = $"events/{evt.FolderName}/{cameraName}.mp4";
-                        await UploadToMinio(mp4Files[0], minioPath, ct);
-
-                        var camera = new Camera
-                        {
-                            CameraName = cameraName,
-                            MinioPath = minioPath,
-                            BucketName = _minioBucket,
-                            Timestamp = timestamp,
-                            Duration = duration,
-                            FileSize = fileInfo.Length,
-                            EventId = evt.Id
-                        };
-
-                        db.Cameras.Add(camera);
-                        _logger.LogInformation("Uploaded single video for camera {CameraName}: {Size} bytes, duration: {Duration}", 
-                            cameraName, fileInfo.Length, duration);
-                    }
-                    else
-                    {
-                        // Multiple files - stitch them together
-                        await StitchVideos(mp4Files, tempOutput, ct);
-
-                        var timestamp = GetTimestampFromName(Path.GetFileName(mp4Files[0])) ?? DateTime.UtcNow;
-
-                        // Get duration of stitched video
-                        var mediaInfo = await FFProbe.AnalyseAsync(tempOutput, cancellationToken: ct);
-                        var duration = mediaInfo.Duration;
-                        var fileInfo = new FileInfo(tempOutput);
-
-                        // Upload stitched video to MinIO
-                        var minioPath = $"events/{evt.FolderName}/{cameraName}.mp4";
-                        await UploadToMinio(tempOutput, minioPath, ct);
-
-                        var camera = new Camera
-                        {
-                            CameraName = cameraName,
-                            MinioPath = minioPath,
-                            BucketName = _minioBucket,
-                            Timestamp = timestamp,
-                            Duration = duration,
-                            FileSize = fileInfo.Length,
-                            EventId = evt.Id
-                        };
-
-                        db.Cameras.Add(camera);
-                        _logger.LogInformation("Stitched and uploaded {Count} videos for camera {CameraName}: {Size} bytes, duration: {Duration}", 
-                            mp4Files.Count, cameraName, fileInfo.Length, duration);
-                    }
-                }
-                finally
-                {
-                    // Clean up temp file
-                    if (File.Exists(tempOutput))
-                    {
-                        try
-                        {
-                            File.Delete(tempOutput);
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogWarning(ex, "Failed to delete temp file {TempOutput}", tempOutput);
-                        }
-                    }
+                    // Quick database insert after upload is complete
+                    db.Cameras.Add(cameraData);
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to stitch and store camera {CameraName} for event {EventId}", cameraName, evt.Id);
+                _logger.LogError(ex, "Failed to process camera {CameraName} for event {EventId}", cameraName, evt.Id);
+            }
+        }
+    }
+
+    private async Task<Camera?> ProcessAndUploadCamera(Event evt, string cameraName, List<string> mp4Files, CancellationToken ct)
+    {
+        // Create temporary output file
+        var tempOutput = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid()}.mp4");
+
+        try
+        {
+            string fileToUpload;
+            DateTime timestamp;
+            TimeSpan duration;
+            long fileSize;
+
+            if (mp4Files.Count == 1)
+            {
+                // Single file - upload directly
+                fileToUpload = mp4Files[0];
+                timestamp = GetTimestampFromName(Path.GetFileName(mp4Files[0])) ?? DateTime.UtcNow;
+
+                // Get video duration
+                var mediaInfo = await FFProbe.AnalyseAsync(fileToUpload, cancellationToken: ct);
+                duration = mediaInfo.Duration;
+                fileSize = new FileInfo(fileToUpload).Length;
+
+                _logger.LogInformation("Single video for camera {CameraName}: {Size} bytes, duration: {Duration}", 
+                    cameraName, fileSize, duration);
+            }
+            else
+            {
+                // Multiple files - stitch them together
+                await StitchVideos(mp4Files, tempOutput, ct);
+
+                fileToUpload = tempOutput;
+                timestamp = GetTimestampFromName(Path.GetFileName(mp4Files[0])) ?? DateTime.UtcNow;
+
+                // Get duration of stitched video
+                var mediaInfo = await FFProbe.AnalyseAsync(fileToUpload, cancellationToken: ct);
+                duration = mediaInfo.Duration;
+                fileSize = new FileInfo(fileToUpload).Length;
+
+                _logger.LogInformation("Stitched {Count} videos for camera {CameraName}: {Size} bytes, duration: {Duration}", 
+                    mp4Files.Count, cameraName, fileSize, duration);
+            }
+
+            // Upload to MinIO (this can take time, but DB connection is not held)
+            var minioPath = $"events/{evt.FolderName}/{cameraName}.mp4";
+            await UploadToMinio(fileToUpload, minioPath, ct);
+
+            // Return camera data to be inserted
+            return new Camera
+            {
+                CameraName = cameraName,
+                MinioPath = minioPath,
+                BucketName = _minioBucket,
+                Timestamp = timestamp,
+                Duration = duration,
+                FileSize = fileSize,
+                EventId = evt.Id
+            };
+        }
+        finally
+        {
+            // Clean up temp file if it was created
+            if (mp4Files.Count > 1 && File.Exists(tempOutput))
+            {
+                try
+                {
+                    File.Delete(tempOutput);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to delete temp file {TempOutput}", tempOutput);
+                }
             }
         }
     }
