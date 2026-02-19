@@ -22,9 +22,10 @@ public partial class Index : IDisposable
     // Timeline properties
     private double currentTime = 0;
     private double videoDuration = 60; // Default 60 seconds, will be updated from video
+    private DateTime? minTimestamp = null; // Earliest camera timestamp (reference point for time 0)
     private System.Timers.Timer? updateTimer;
-    private string currentTimeFormatted => FormatTime(currentTime);
-    private string durationFormatted => FormatTime(videoDuration);
+    private string currentTimeFormatted => FormatTimeWithTimestamp(currentTime);
+    private string durationFormatted => FormatTimeWithTimestamp(videoDuration);
 
     // Lightweight camera metadata without video data
     private class CameraMetadata
@@ -77,6 +78,7 @@ public partial class Index : IDisposable
             SelectedEvent = null;
             cameras = null;
             videoDuration = 60; // Reset to default
+            minTimestamp = null; // Reset reference timestamp
             currentTime = 0;
             isPlaying = false;
         }
@@ -86,19 +88,19 @@ public partial class Index : IDisposable
     {
         try
         {
-            if (SelectedEvent?.Event == null) 
+            if (SelectedEvent?.Event == null)
             {
                 Logger.LogWarning("Cannot initialize map - no event selected");
                 return;
             }
 
-            Logger.LogInformation("Attempting to initialize map for event {EventId}, Lat={Lat}, Long={Long}", 
+            Logger.LogInformation("Attempting to initialize map for event {EventId}, Lat={Lat}, Long={Long}",
                 SelectedEvent.Event.Id, SelectedEvent.Event.Lat, SelectedEvent.Event.Long);
 
             // Parse latitude and longitude from strings
-            if (double.TryParse(SelectedEvent.Event.Lat, System.Globalization.NumberStyles.Any, 
+            if (double.TryParse(SelectedEvent.Event.Lat, System.Globalization.NumberStyles.Any,
                 System.Globalization.CultureInfo.InvariantCulture, out var lat) &&
-                double.TryParse(SelectedEvent.Event.Long, System.Globalization.NumberStyles.Any, 
+                double.TryParse(SelectedEvent.Event.Long, System.Globalization.NumberStyles.Any,
                 System.Globalization.CultureInfo.InvariantCulture, out var lon))
             {
                 // Give the DOM more time to render the map container
@@ -116,7 +118,7 @@ public partial class Index : IDisposable
             }
             else
             {
-                Logger.LogWarning("Invalid coordinates for event {EventId}: Lat={Lat}, Long={Long}", 
+                Logger.LogWarning("Invalid coordinates for event {EventId}: Lat={Lat}, Long={Long}",
                     SelectedEvent.Event.Id, SelectedEvent.Event.Lat, SelectedEvent.Event.Long);
             }
         }
@@ -149,17 +151,25 @@ public partial class Index : IDisposable
                 })
                 .ToListAsync();
 
-            // Set video duration to the max duration of all cameras
+            // Set video duration from earliest camera start to latest camera end
             if (cameras.Any())
             {
-                var maxDuration = cameras.Max(c => c.Duration);
-                videoDuration = maxDuration.TotalSeconds;
-                Logger.LogInformation("Loaded {Count} cameras for event {EventId}, max duration: {Duration}", 
-                    cameras.Count, SelectedEvent.Event.Id, maxDuration);
+                // Get the earliest timestamp as reference point (time 0)
+                minTimestamp = cameras.Min(c => c.Timestamp);
+                
+                // Calculate the latest end time
+                var maxEndTime = cameras.Max(c => c.Timestamp + c.Duration);
+                
+                // Total duration from earliest start to latest end
+                videoDuration = (maxEndTime - minTimestamp.Value).TotalSeconds;
+                
+                Logger.LogInformation("Loaded {Count} cameras for event {EventId}, duration: {Duration}, reference timestamp: {MinTimestamp}", 
+                    cameras.Count, SelectedEvent.Event.Id, TimeSpan.FromSeconds(videoDuration), minTimestamp);
             }
             else
             {
                 videoDuration = 60; // Default fallback
+                minTimestamp = null;
                 Logger.LogInformation("No cameras found for event {EventId}", SelectedEvent.Event.Id);
             }
         }
@@ -192,7 +202,7 @@ public partial class Index : IDisposable
     {
         try
         {
-            var time = await JS.InvokeAsync<double>("eval", 
+            var time = await JS.InvokeAsync<double>("eval",
                 "(() => { const v = document.querySelector('video'); return v ? v.currentTime : 0; })()");
 
             // Update if difference is significant (reduced to 0.1 seconds for smoother slider)
@@ -218,6 +228,19 @@ public partial class Index : IDisposable
     {
         var ts = TimeSpan.FromSeconds(seconds);
         return $"{(int)ts.TotalMinutes:D2}:{ts.Seconds:D2}";
+    }
+
+    private string FormatTimeWithTimestamp(double seconds)
+    {
+        // If we have a minimum timestamp, show actual clock time
+        if (minTimestamp.HasValue)
+        {
+            var actualTime = minTimestamp.Value.AddSeconds(seconds);
+            return actualTime.ToString("HH:mm:ss");
+        }
+        
+        // Otherwise show elapsed time
+        return FormatTime(seconds);
     }
 
     private int GetTimeMarkerCount()
@@ -263,10 +286,19 @@ public partial class Index : IDisposable
             2 => cameraName.Equals("back", StringComparison.OrdinalIgnoreCase),
             3 => cameraName.Equals("left_repeater", StringComparison.OrdinalIgnoreCase),
             4 => cameraName.Equals("right_repeater", StringComparison.OrdinalIgnoreCase),
-            5 => cameraName.Equals("left_repeater", StringComparison.OrdinalIgnoreCase) || 
+            5 => cameraName.Equals("left_repeater", StringComparison.OrdinalIgnoreCase) ||
                  cameraName.Equals("right_repeater", StringComparison.OrdinalIgnoreCase),
             _ => false
         };
+    }
+
+    private DateTime? GetMinimumTimestamp()
+    {
+        if (SelectedEvent?.Event != null && SelectedEvent.Event.Cameras.Count > 0)
+        {
+            return SelectedEvent.Event.Cameras.Min(a => a.Timestamp);
+        }
+        return null;
     }
 
     private async Task TogglePlayPause()

@@ -86,13 +86,27 @@
                                        Variant="Variant.Filled"
                                        ValueChanged="OnTimelineChanged"
                                        Style="width: 100%;" />
+                            
+                            <!-- Event trigger marker -->
+                            @if (minTimestamp.HasValue && SelectedEvent?.Event?.TimeStamp != null)
+                            {
+                                var eventOffsetSeconds = (SelectedEvent.Event.TimeStamp - minTimestamp.Value).TotalSeconds;
+                                if (eventOffsetSeconds >= 0 && eventOffsetSeconds <= videoDuration)
+                                {
+                                    var eventPosition = (eventOffsetSeconds / videoDuration) * 100;
+                                    <div style="position: absolute; left: @(eventPosition)%; top: 0; bottom: 20px; width: 3px; background-color: red; z-index: 1000; pointer-events: none;">
+                                        <div style="position: absolute; top: -8px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 8px solid red;"></div>
+                                    </div>
+                                }
+                            }
+                            
                             <!-- Time markers -->
                             <div style="display: flex; justify-content: space-between; margin-top: 4px; padding: 0 8px;">
                                 @for (int i = 0; i <= GetTimeMarkerCount(); i++)
                                 {
                                     var markerTime = (videoDuration / GetTimeMarkerCount()) * i;
                                     <MudText Typo="Typo.caption" Style="font-size: 10px; color: rgba(255,255,255,0.6);">
-                                        @FormatTime(markerTime)
+                                        @FormatTimeWithTimestamp(markerTime)
                                     </MudText>
                                 }
                             </div>
