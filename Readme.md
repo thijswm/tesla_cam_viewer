@@ -71,13 +71,13 @@ You can select a date in the calender, and it will automatically list the clips 
         depends_on:
         - minio
         entrypoint: >
-        /bin/sh -c " set -e; rm -rf /root/.mc; echo 'Waiting for MinIO...'; until mc alias set myminio http://minio:9000 $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD}; do
-            echo 'MinIO not ready or creds wrong, retrying...';
-            sleep 2;
-        done; mc mb -p myminio/tesla-cam || true; mc anonymous set none myminio/tesla-cam; mc ls myminio; echo 'Done.'; "
+            /bin/sh -c " set -e; rm -rf /root/.mc; echo 'Waiting for MinIO...'; until mc alias set myminio http://minio:9000 $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD}; do
+                echo 'MinIO not ready or creds wrong, retrying...';
+                sleep 2;
+            done; mc mb -p myminio/tesla-cam || true; mc anonymous set none myminio/tesla-cam; mc ls myminio; echo 'Done.'; "
         environment:
-        MINIO_ROOT_USER: minio
-        MINIO_ROOT_PASSWORD: minio123
+            MINIO_ROOT_USER: minio
+            MINIO_ROOT_PASSWORD: minio123
         restart: "no"    
     volumes:
         db_data:
