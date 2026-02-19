@@ -1,0 +1,18 @@
+name: Build and Push docker image
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        type: string
+        required: true
+        description: 'Docker tag'
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    environment: docker_environment
+    steps:
+      - name: Checkout the repo
+        uses: actions/checkout@v4
+      - name: Build docker image
+        run: |
+          docker build -f ./src/TeslaCamViewer/Dockerfile -t thijswm/tesla-cam-viewer:${{ inputs.tag }} ./src/TeslaCamViewer
