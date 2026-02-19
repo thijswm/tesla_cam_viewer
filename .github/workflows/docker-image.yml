@@ -16,7 +16,9 @@ jobs:
       - name: Build docker image
         run: |
           docker build -f ./src/TeslaCamViewer/Dockerfile -t thijswm/tesla-cam-viewer:${{ inputs.tag }} ./src/TeslaCamViewer
+          docker image save thijswm/tesla-cam-viewer:${{ inputs.tag }} thijswm/tesla-cam-viewer:latest
       - name: push image
         run: |
           docker login -u thijswm -p ${{ secrets.DOCKER_TOKEN }}
           docker push thijswm/tesla-cam-viewer:${{ inputs.tag }}
+          docker push thijswm/tesla-cam-viewer:latest
