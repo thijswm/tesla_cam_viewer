@@ -47,8 +47,7 @@ services:
       MINIO_ROOT_PASSWORD: minio123
     restart: "no"
   app:
-    build:
-      context: ./src/TeslaCamViewer
+    image: thijswm/tesla-cam-viewer:latest
     depends_on:
       db:
         condition: service_healthy
