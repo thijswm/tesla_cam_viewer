@@ -4,7 +4,8 @@ using TeslaCamViewer.Data;
 using FFMpegCore;
 using Minio;
 using Minio.DataModel.Args;
-using System.Runtime.CompilerServices;
+using System.Globalization;
+using System.Net.Http.Headers;
 
 namespace TeslaCamViewer.Services;
 
@@ -16,6 +17,8 @@ public class ClipScanner : BackgroundService
     private readonly string _sentryPath;
     private readonly string _savedPath;
     private readonly string _minioBucket;
+    private readonly bool _enableReverseGeocoding;
+    private static readonly HttpClient GeoHttpClient = CreateGeoHttpClient();
 
     private static readonly TimeSpan FolderQuietPeriod = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan FolderQuietPollInterval = TimeSpan.FromSeconds(1);
@@ -29,6 +32,7 @@ public class ClipScanner : BackgroundService
         _sentryPath = config["TeslaCam:SentryClipsPath"] ?? "/mnt/sentry";
         _savedPath = config["TeslaCam:SavedClipsPath"] ?? "/mnt/saved";
         _minioBucket = config["MinIO:BucketName"] ?? "teslacam-videos";
+        _enableReverseGeocoding = config.GetValue<bool>("TeslaCam:EnableReverseGeocoding");
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -153,6 +157,15 @@ public class ClipScanner : BackgroundService
                                 throw new Exception($"Failed to parse camera value '{camera.GetString()}' in event.json");
                             }
                             evt.Camera = camInt;
+                        }
+
+                        if (_enableReverseGeocoding
+                            && double.TryParse(evt.Lat, NumberStyles.Float, CultureInfo.InvariantCulture, out var latValue)
+                            && double.TryParse(evt.Long, NumberStyles.Float, CultureInfo.InvariantCulture, out var lonValue))
+                        {
+                            _logger.LogInformation("Reverse geocoding enabled for {FolderName} at {Lat},{Lon}", folderName, latValue, lonValue);
+                             await TryPopulateAddressAsync(evt, latValue, lonValue, ct);
+                            _logger.LogInformation("Reverse geocoding result for {FolderName}: Street={Street}, City={City}", folderName, evt.Street, evt.City);
                         }
                         _logger.LogDebug("Parsed event.json for {FolderName}: Type={Type}", folderName, evt.Type);
                     }
@@ -475,5 +488,61 @@ public class ClipScanner : BackgroundService
 
             await Task.Delay(pollInterval, ct);
         }
+    }
+
+    private static HttpClient CreateGeoHttpClient()
+    {
+        var client = new HttpClient
+        {
+            Timeout = TimeSpan.FromSeconds(10)
+        };
+
+        client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("TeslaCamViewer", "1.0"));
+        return client;
+    }
+
+    private async Task TryPopulateAddressAsync(Event evt, double lat, double lon, CancellationToken ct)
+    {
+        try
+        {
+            var url = $"https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat={lat.ToString(CultureInfo.InvariantCulture)}&lon={lon.ToString(CultureInfo.InvariantCulture)}&zoom=18&addressdetails=1";
+            using var response = await GeoHttpClient.GetAsync(url, ct);
+            response.EnsureSuccessStatusCode();
+
+            await using var stream = await response.Content.ReadAsStreamAsync(ct);
+            using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
+
+            if (doc.RootElement.TryGetProperty("address", out var address))
+            {
+                var street = GetAddressValue(address, "road")
+                    ?? GetAddressValue(address, "neighbourhood")
+                    ?? GetAddressValue(address, "suburb");
+                if (!string.IsNullOrWhiteSpace(street))
+                {
+                    if (!string.IsNullOrWhiteSpace(evt.Street) && !string.Equals(evt.Street, street, StringComparison.Ordinal))
+                    {
+                        _logger.LogInformation("Overriding street from reverse geocoding: {OldStreet} -> {NewStreet}", evt.Street, street);
+                    }
+                    evt.Street = street;
+                }
+
+                if (string.IsNullOrWhiteSpace(evt.City))
+                {
+                    evt.City = GetAddressValue(address, "city")
+                        ?? GetAddressValue(address, "town")
+                        ?? GetAddressValue(address, "village")
+                        ?? string.Empty;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to reverse-geocode address for {Lat},{Lon}", lat, lon);
+        }
+    }
+
+    private static string? GetAddressValue(JsonElement address, string key)
+    {
+        return address.TryGetProperty(key, out var value) ? value.GetString() : null;
     }
 }

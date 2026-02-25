@@ -55,11 +55,10 @@ services:
         condition: service_healthy
     environment:
       - ASPNETCORE_URLS=http://0.0.0.0:8080
-      - TZ=UTC
       - ConnectionStrings__Default=Host=db;Port=5432;Database=tesla_cam;Username=tesla;Password=tesla
       - TeslaCam__SentryClipsPath=${SENTRY_CLIPS_PATH}
       - TeslaCam__SavedClipsPath=${SAVED_CLIPS_PATH}
-      - TeslaCam__ModelsPath=${ModelsPath}
+      - TeslaCam__EnableReverseGeocoding=${REVERSE_GEO_CODING}
     ports:
       - "9002:8080"
 volumes:
