@@ -49,6 +49,8 @@ builder.Services.AddSingleton<IMinioClient>(sp =>
 
 builder.Services.AddMudServices();
 
+builder.Services.AddScoped<MotionDetector>();
+builder.Services.AddScoped<ClipAnalyzer>();
 builder.Services.AddHostedService<ClipScanner>();
 
 builder.Services.AddEndpointsApiExplorer();
@@ -118,8 +120,9 @@ app.MapGet("/api/video/{clipId:int}", async (int clipId, IDbContextFactory<AppDb
 });
 
 // Serve stitched camera videos from MinIO
-app.MapGet("/api/camera/{cameraId:int}", async (int cameraId, AppDbContext db, IMinioClient minio) =>
+app.MapGet("/api/camera/{cameraId:int}", async (int cameraId, IDbContextFactory<AppDbContext> dbFactory, IMinioClient minio, ClipAnalyzer clipAnalyzer, HttpContext httpContext, bool? detect) =>
 {
+    await using var db = await dbFactory.CreateDbContextAsync();
     var camera = await db.Cameras.FindAsync(cameraId);
     if (camera == null)
     {
@@ -135,18 +138,56 @@ app.MapGet("/api/camera/{cameraId:int}", async (int cameraId, AppDbContext db, I
 
     try
     {
-        Log.Information("Streaming video from MinIO for camera {CameraId} ({CameraName}): {Path}", 
+        Log.Information("Streaming video from MinIO for camera {CameraId} ({CameraName}): {Path}",
             cameraId, camera.CameraName, camera.MinioPath);
 
-        // Stream from MinIO
+        if (detect == true)
+        {
+            Log.Information("Streaming MJPEG detections for camera {CameraId}", cameraId);
+
+            var tempVideoPath = Path.Combine(Path.GetTempPath(), $"camera_{cameraId}_{Guid.NewGuid()}.mp4");
+
+            await using (var fileStream = File.Create(tempVideoPath))
+            {
+                await minio.GetObjectAsync(new GetObjectArgs()
+                    .WithBucket(camera.BucketName)
+                    .WithObject(camera.MinioPath)
+                    .WithCallbackStream(stream => stream.CopyTo(fileStream)),
+                    httpContext.RequestAborted);
+            }
+
+            httpContext.Response.ContentType = "multipart/x-mixed-replace; boundary=frame";
+            httpContext.Response.Headers.CacheControl = "no-cache";
+
+            httpContext.Response.OnCompleted(() =>
+            {
+                try
+                {
+                    if (File.Exists(tempVideoPath))
+                    {
+                        File.Delete(tempVideoPath);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log.Warning(ex, "Failed to cleanup temp camera video at {Path}", tempVideoPath);
+                }
+
+                return Task.CompletedTask;
+            });
+
+            await clipAnalyzer.StreamDetectionsAsMjpeg(tempVideoPath, httpContext.Response.Body, httpContext.RequestAborted);
+            return Results.Empty;
+        }
+
         var memoryStream = new MemoryStream();
         await minio.GetObjectAsync(new GetObjectArgs()
             .WithBucket(camera.BucketName)
             .WithObject(camera.MinioPath)
-            .WithCallbackStream(stream => stream.CopyTo(memoryStream)));
+            .WithCallbackStream(stream => stream.CopyTo(memoryStream)),
+            httpContext.RequestAborted);
 
         memoryStream.Position = 0;
-
         return Results.Stream(memoryStream, "video/mp4", enableRangeProcessing: true);
     }
     catch (Exception ex)

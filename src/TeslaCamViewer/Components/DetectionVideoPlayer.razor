@@ -1,0 +1,11 @@
+@using Microsoft.AspNetCore.Components
+
+<div style="position: relative; width: 100%; max-width: 1280px; margin: 0 auto;">
+    <img src="/api/camera/@CameraId?detect=true"
+         style="width: 100%; height: auto; display: block;" />
+ </div>
+
+@code {
+    [Parameter]
+    public int CameraId { get; set; }
+}

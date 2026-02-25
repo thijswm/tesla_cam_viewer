@@ -4,6 +4,7 @@ using TeslaCamViewer.Data;
 using FFMpegCore;
 using Minio;
 using Minio.DataModel.Args;
+using System.Runtime.CompilerServices;
 
 namespace TeslaCamViewer.Services;
 
@@ -102,7 +103,11 @@ public class ClipScanner : BackgroundService
             if (evt == null)
             {
                 _logger.LogInformation("Waiting for quiet folder: {Folder}", dir);
+#if DEBUG
+                _logger.LogDebug("DEBUG mode: Skipping quiet wait for folder {Folder}", dir);
+#else
                 await WaitForDirectoryQuiet(dir, FolderQuietPeriod, FolderQuietPollInterval, FolderQuietStatusInterval, ct);
+#endif
 
                 evt = new Event { FolderName = folderName, CreatedAt = DateTime.UtcNow, Source = source };
                 var eventJson = Path.Combine(dir, "event.json");
@@ -298,6 +303,8 @@ public class ClipScanner : BackgroundService
             // Upload to MinIO (this can take time, but DB connection is not held)
             var minioPath = $"events/{evt.FolderName}/{cameraName}.mp4";
             await UploadToMinio(fileToUpload, minioPath, ct);
+
+            //await _clipAnalyzer.AnalyzeAsync(fileToUpload);
 
             // Return camera data to be inserted
             return new Camera
