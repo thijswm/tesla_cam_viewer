@@ -6,7 +6,7 @@ namespace TeslaCamViewer.Shared
 {
     public partial class MainLayout
     {
-        [Inject] AppDbContext? Db { get; set; }
+        [Inject] IDbContextFactory<AppDbContext>? DbFactory { get; set; }
         private List<Event> _events = [];
         private List<ClipItem> _eventsSelected = [];
 
@@ -17,9 +17,10 @@ namespace TeslaCamViewer.Shared
 
         protected override async Task OnInitializedAsync()
         {
-            if (Db != null)
+            if (DbFactory != null)
             {
-                _events = await Db.Events.Include(a => a.Clips).ToListAsync();
+                await using var db = await DbFactory.CreateDbContextAsync();
+                _events = await db.Events.Include(a => a.Clips).ToListAsync();
                 CalculateStatistics();
             }
         }

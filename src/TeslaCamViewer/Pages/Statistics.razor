@@ -2,7 +2,7 @@
 @using Microsoft.JSInterop
 @using TeslaCamViewer.Data
 @using Microsoft.EntityFrameworkCore
-@inject AppDbContext Db
+@inject IDbContextFactory<AppDbContext> DbFactory
 @inject IJSRuntime JS
 
 
@@ -69,7 +69,7 @@
         <!-- Charts Row -->
         <MudGrid Spacing="3" Class="mb-4">
             <!-- Events by Type -->
-            <MudItem xs="12" md="6">
+            <MudItem xs="12" md="4">
                 <MudPaper Class="pa-4" Elevation="3" Style="height: 100%; min-height: 400px;">
                     <MudText Typo="Typo.h6" Class="mb-3">Events by Type</MudText>
                     @if (_eventsByType.Any())
@@ -96,7 +96,7 @@
             </MudItem>
 
             <!-- Events Over Time -->
-            <MudItem xs="12" md="6">
+            <MudItem xs="12" md="4">
                 <MudPaper Class="pa-4" Elevation="3" Style="height: 100%; min-height: 400px;">
                     <MudText Typo="Typo.h6" Class="mb-3">Events Over Time (Last 30 Days)</MudText>
                     @if (_eventsByDay.Any())
@@ -114,29 +114,29 @@
                     }
                 </MudPaper>
             </MudItem>
-        </MudGrid>
 
-        <!-- Top Locations -->
-        <MudGrid Spacing="3" Class="mb-4">
-            <MudItem xs="12">
-                <MudPaper Class="pa-4" Elevation="3">
-                    <MudText Typo="Typo.h6" Class="mb-3">Top 10 Locations (by City)</MudText>
+            <!-- Top Locations -->
+            <MudItem xs="12" md="4">
+                <MudPaper Class="pa-4" Elevation="3" Style="height: 100%; min-height: 400px; overflow-y: auto;">
+                    <MudText Typo="Typo.h6" Class="mb-3">Top 10 Locations</MudText>
                     @if (_topLocations.Any())
                     {
-                        <MudTable Items="@_topLocations" Hover="true" Dense="true" Striped="true">
+                        <MudTable Items="@_topLocations" Hover="true" Dense="true" Striped="true" Elevation="0">
                             <HeaderContent>
                                 <MudTh>City</MudTh>
                                 <MudTh>Street</MudTh>
-                                <MudTh Style="text-align: right">Events</MudTh>
+                                <MudTh Style="text-align: right">Count</MudTh>
                             </HeaderContent>
                             <RowTemplate>
                                 <MudTd DataLabel="City">
                                     <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
                                         <MudIcon Icon="@Icons.Material.Filled.LocationCity" Size="Size.Small" Color="Color.Primary" />
-                                        <MudText>@context.City</MudText>
+                                        <MudText Typo="Typo.body2">@context.City</MudText>
                                     </MudStack>
                                 </MudTd>
-                                <MudTd DataLabel="Street">@context.Street</MudTd>
+                                <MudTd DataLabel="Street">
+                                    <MudText Typo="Typo.body2">@context.Street</MudText>
+                                </MudTd>
                                 <MudTd DataLabel="Count" Style="text-align: right">
                                     <MudChip T="string" Color="Color.Primary" Size="Size.Small">@context.Count</MudChip>
                                 </MudTd>
@@ -198,7 +198,8 @@
         _isLoading = true;
         StateHasChanged();
 
-        _events = await Db.Events.ToListAsync();
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _events = await db.Events.ToListAsync();
 
         // Calculate summary statistics
         _totalEvents = _events.Count;
@@ -258,12 +259,14 @@
         if (_isLoading || _mapInitialized)
             return;
 
+        // Set flag immediately to prevent multiple calls during async operations
+        _mapInitialized = true;
+
         // Let MudBlazor finish layout and ensure container is sized
         await Task.Yield();
         await Task.Delay(150);
 
         await JS.InvokeVoidAsync("teslaHeatmap.init", "teslaMap", 52.1326, 5.2913, 8);
-        _mapInitialized = true;
 
         // Add additional delay before loading heatmap data
         await Task.Delay(100);
@@ -302,20 +305,12 @@
         .Where(p => p is not null)
         .Cast<object[]>()
         .GroupBy(e => new { Lat = e[0], Lon = e[1] })
-        .Select(g => new object[] { g.Key.Lat, g.Key.Lon, (double)g.Count() })
+        .Select(g => new[] { g.Key.Lat, g.Key.Lon, (double)g.Count() })
         .ToArray();
-
-        Console.WriteLine($"Total events: {_events.Count}, Points with coordinates: {points.Length}");
-        if (points.Length > 0)
-        {
-            Console.WriteLine($"First point: Lat={points[0][0]}, Lon={points[0][1]}, Count={points[0][2]}");
-        }
 
         if (points.Length == 0) return;
 
-        // Use null parameters to let JS use dynamic radius based on zoom level
-        await JS.InvokeVoidAsync("teslaHeatmap.setHeat", points, null, null, null);
-        await JS.InvokeVoidAsync("teslaHeatmap.fitToPoints", points);
+        await JS.InvokeVoidAsync("teslaHeatmap.setHeat", (object)points);
     }
 
     // Helper classes

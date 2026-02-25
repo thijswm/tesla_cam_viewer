@@ -27,7 +27,8 @@ builder.Host.UseSerilog(Log.Logger);
 
 Log.Information("Starting TeslaCamViewer");
 
-builder.Services.AddDbContext<AppDbContext>(options =>
+// Add DbContext factory for components that need concurrent access
+builder.Services.AddPooledDbContextFactory<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
 
 // Configure MinIO client
@@ -82,14 +83,21 @@ app.MapBlazorHub();
 app.MapFallbackToPage("/_Host");
 
 app.MapGet("/api/health", () => Results.Ok("ok"));
-app.MapGet("/api/events", async (AppDbContext db) =>
-    await db.Events.OrderByDescending(e => e.CreatedAt).ToListAsync());
-app.MapGet("/api/clips", async (AppDbContext db) =>
-    await db.Clips.OrderByDescending(c => c.Timestamp).Take(500).ToListAsync());
+app.MapGet("/api/events", async (IDbContextFactory<AppDbContext> dbFactory) =>
+{
+    await using var db = await dbFactory.CreateDbContextAsync();
+    return await db.Events.OrderByDescending(e => e.CreatedAt).ToListAsync();
+});
+app.MapGet("/api/clips", async (IDbContextFactory<AppDbContext> dbFactory) =>
+{
+    await using var db = await dbFactory.CreateDbContextAsync();
+    return await db.Clips.OrderByDescending(c => c.Timestamp).Take(500).ToListAsync();
+});
 
 // Serve video files from Clip paths
-app.MapGet("/api/video/{clipId:int}", async (int clipId, AppDbContext db) =>
+app.MapGet("/api/video/{clipId:int}", async (int clipId, IDbContextFactory<AppDbContext> dbFactory) =>
 {
+    await using var db = await dbFactory.CreateDbContextAsync();
     var clip = await db.Clips.FindAsync(clipId);
     if (clip == null || string.IsNullOrWhiteSpace(clip.Path))
     {

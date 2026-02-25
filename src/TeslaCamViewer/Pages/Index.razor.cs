@@ -24,8 +24,6 @@ public partial class Index : IDisposable
     private double videoDuration = 60; // Default 60 seconds, will be updated from video
     private DateTime? minTimestamp = null; // Earliest camera timestamp (reference point for time 0)
     private System.Timers.Timer? updateTimer;
-    private string currentTimeFormatted => FormatTimeWithTimestamp(currentTime);
-    private string durationFormatted => FormatTimeWithTimestamp(videoDuration);
 
     // Lightweight camera metadata without video data
     private class CameraMetadata
@@ -105,16 +103,6 @@ public partial class Index : IDisposable
             {
                 // Give the DOM more time to render the map container
                 await Task.Delay(300);
-
-                var success = await JS.InvokeAsync<bool>("initializeMap", "event-map", lat, lon);
-                if (success)
-                {
-                    Logger.LogInformation("Map initialized successfully for event at {Lat}, {Lon}", lat, lon);
-                }
-                else
-                {
-                    Logger.LogWarning("Map initialization returned false");
-                }
             }
             else
             {
@@ -156,14 +144,14 @@ public partial class Index : IDisposable
             {
                 // Get the earliest timestamp as reference point (time 0)
                 minTimestamp = cameras.Min(c => c.Timestamp);
-                
+
                 // Calculate the latest end time
                 var maxEndTime = cameras.Max(c => c.Timestamp + c.Duration);
-                
+
                 // Total duration from earliest start to latest end
                 videoDuration = (maxEndTime - minTimestamp.Value).TotalSeconds;
-                
-                Logger.LogInformation("Loaded {Count} cameras for event {EventId}, duration: {Duration}, reference timestamp: {MinTimestamp}", 
+
+                Logger.LogInformation("Loaded {Count} cameras for event {EventId}, duration: {Duration}, reference timestamp: {MinTimestamp}",
                     cameras.Count, SelectedEvent.Event.Id, TimeSpan.FromSeconds(videoDuration), minTimestamp);
             }
             else
@@ -238,7 +226,7 @@ public partial class Index : IDisposable
             var actualTime = minTimestamp.Value.AddSeconds(seconds);
             return actualTime.ToString("HH:mm:ss");
         }
-        
+
         // Otherwise show elapsed time
         return FormatTime(seconds);
     }
@@ -290,15 +278,6 @@ public partial class Index : IDisposable
                  cameraName.Equals("right_repeater", StringComparison.OrdinalIgnoreCase),
             _ => false
         };
-    }
-
-    private DateTime? GetMinimumTimestamp()
-    {
-        if (SelectedEvent?.Event != null && SelectedEvent.Event.Cameras.Count > 0)
-        {
-            return SelectedEvent.Event.Cameras.Min(a => a.Timestamp);
-        }
-        return null;
     }
 
     private async Task TogglePlayPause()

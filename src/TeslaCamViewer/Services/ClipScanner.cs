@@ -89,7 +89,8 @@ public class ClipScanner : BackgroundService
         _logger.LogInformation("Scanning {Source} clips in {Root}", source, root);
 
         using var scope = _sp.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var dbFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<AppDbContext>>();
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
 
         var eventsProcessed = 0;
         var clipsInserted = 0;
