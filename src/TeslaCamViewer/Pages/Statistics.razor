@@ -1,0 +1,266 @@
+@page "/statistics"
+@using TeslaCamViewer.Data
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+
+<MudContainer MaxWidth="MaxWidth.ExtraExtraLarge" Class="mt-4">
+    <MudText Typo="Typo.h3" Class="mb-4">Tesla Cam Statistics</MudText>
+
+    @if (_isLoading)
+    {
+        <MudStack AlignItems="AlignItems.Center" Spacing="3" Class="pa-8">
+            <MudProgressCircular Indeterminate Color="Color.Primary" Size="Size.Large" />
+            <MudText Typo="Typo.h6">Loading statistics...</MudText>
+        </MudStack>
+    }
+    else
+    {
+        <!-- Summary Cards -->
+        <MudGrid Spacing="3" Class="mb-4">
+            <MudItem xs="12" sm="6" md="3">
+                <MudCard Elevation="3">
+                    <MudCardContent>
+                        <MudStack Spacing="1" AlignItems="AlignItems.Center">
+                            <MudIcon Icon="@Icons.Material.Filled.Event" Size="Size.Large" Color="Color.Primary" />
+                            <MudText Typo="Typo.h3">@_totalEvents</MudText>
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">Total Events</MudText>
+                        </MudStack>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudCard Elevation="3">
+                    <MudCardContent>
+                        <MudStack Spacing="1" AlignItems="AlignItems.Center">
+                            <MudIcon Icon="@Icons.Material.Filled.Warning" Size="Size.Large" Color="Color.Warning" />
+                            <MudText Typo="Typo.h3">@_sentryEvents</MudText>
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">Sentry Events</MudText>
+                        </MudStack>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudCard Elevation="3">
+                    <MudCardContent>
+                        <MudStack Spacing="1" AlignItems="AlignItems.Center">
+                            <MudIcon Icon="@Icons.Material.Filled.BookmarkBorder" Size="Size.Large" Color="Color.Info" />
+                            <MudText Typo="Typo.h3">@_savedEvents</MudText>
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">Saved Events</MudText>
+                        </MudStack>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudCard Elevation="3">
+                    <MudCardContent>
+                        <MudStack Spacing="1" AlignItems="AlignItems.Center">
+                            <MudIcon Icon="@Icons.Material.Filled.LocationOn" Size="Size.Large" Color="Color.Success" />
+                            <MudText Typo="Typo.h3">@_uniqueCities</MudText>
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">Unique Cities</MudText>
+                        </MudStack>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        </MudGrid>
+
+        <!-- Charts Row -->
+        <MudGrid Spacing="3" Class="mb-4">
+            <!-- Events by Type -->
+            <MudItem xs="12" md="6">
+                <MudPaper Class="pa-4" Elevation="3" Style="height: 100%; min-height: 400px;">
+                    <MudText Typo="Typo.h6" Class="mb-3">Events by Type</MudText>
+                    @if (_eventsByType.Any())
+                    {
+                        <MudStack Spacing="2">
+                            @foreach (var typeGroup in _eventsByType.OrderByDescending(x => x.Count).Take(10))
+                            {
+                                var percentage = (_totalEvents > 0) ? (typeGroup.Count * 100.0 / _totalEvents) : 0;
+                                <MudStack Spacing="1">
+                                    <MudStack Row="true" Justify="Justify.SpaceBetween">
+                                        <MudText Typo="Typo.body2">@typeGroup.Type</MudText>
+                                        <MudText Typo="Typo.body2">@typeGroup.Count (@percentage.ToString("F1")%)</MudText>
+                                    </MudStack>
+                                    <MudProgressLinear Value="@percentage" Color="Color.Primary" Size="Size.Medium" />
+                                </MudStack>
+                            }
+                        </MudStack>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">No event type data available</MudText>
+                    }
+                </MudPaper>
+            </MudItem>
+
+            <!-- Events Over Time -->
+            <MudItem xs="12" md="6">
+                <MudPaper Class="pa-4" Elevation="3" Style="height: 100%; min-height: 400px;">
+                    <MudText Typo="Typo.h6" Class="mb-3">Events Over Time (Last 30 Days)</MudText>
+                    @if (_eventsByDay.Any())
+                    {
+                        <MudChart ChartType="ChartType.Line"
+                                  ChartSeries="@_eventsOverTimeSeries"
+                                  XAxisLabels="@_eventsOverTimeLabels.ToArray()"
+                                  Width="100%"
+                                  Height="300px">
+                        </MudChart>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">No timeline data available</MudText>
+                    }
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+
+        <!-- Top Locations -->
+        <MudGrid Spacing="3" Class="mb-4">
+            <MudItem xs="12">
+                <MudPaper Class="pa-4" Elevation="3">
+                    <MudText Typo="Typo.h6" Class="mb-3">Top 10 Locations (by City)</MudText>
+                    @if (_topLocations.Any())
+                    {
+                        <MudTable Items="@_topLocations" Hover="true" Dense="true" Striped="true">
+                            <HeaderContent>
+                                <MudTh>City</MudTh>
+                                <MudTh>Street</MudTh>
+                                <MudTh Style="text-align: right">Events</MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd DataLabel="City">
+                                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                                        <MudIcon Icon="@Icons.Material.Filled.LocationCity" Size="Size.Small" Color="Color.Primary" />
+                                        <MudText>@context.City</MudText>
+                                    </MudStack>
+                                </MudTd>
+                                <MudTd DataLabel="Street">@context.Street</MudTd>
+                                <MudTd DataLabel="Count" Style="text-align: right">
+                                    <MudChip T="string" Color="Color.Primary" Size="Size.Small">@context.Count</MudChip>
+                                </MudTd>
+                            </RowTemplate>
+                        </MudTable>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">No location data available</MudText>
+                    }
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+    }
+</MudContainer>
+
+@code {
+    private bool _isLoading = true;
+    private List<Event> _events = new();
+    
+    // Summary stats
+    private int _totalEvents;
+    private int _sentryEvents;
+    private int _savedEvents;
+    private int _uniqueCities;
+
+    // Events by type
+    private List<EventTypeGroup> _eventsByType = new();
+    
+    // Top locations
+    private List<LocationGroup> _topLocations = new();
+    
+    // Events by camera
+    private List<CameraGroup> _eventsByCamera = new();
+    
+    // Events over time
+    private List<DayGroup> _eventsByDay = new();
+    private List<ChartSeries> _eventsOverTimeSeries = new();
+    private List<string> _eventsOverTimeLabels = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadStatistics();
+    }
+
+    private async Task LoadStatistics()
+    {
+        _isLoading = true;
+        StateHasChanged();
+
+        _events = await Db.Events.ToListAsync();
+
+        // Calculate summary statistics
+        _totalEvents = _events.Count;
+        _sentryEvents = _events.Count(e => e.Source == "Sentry");
+        _savedEvents = _events.Count(e => e.Source == "Saved");
+        
+        // Unique cities
+        _uniqueCities = _events
+            .Where(e => !string.IsNullOrEmpty(e.City))
+            .Select(e => e.City)
+            .Distinct()
+            .Count();
+
+        // Events by type
+        _eventsByType = _events
+            .GroupBy(e => string.IsNullOrEmpty(e.Type) ? "unknown" : e.Type)
+            .Select(g => new EventTypeGroup { Type = g.Key, Count = g.Count() })
+            .ToList();
+
+        // Top locations
+        _topLocations = _events
+            .Where(e => !string.IsNullOrEmpty(e.City))
+            .GroupBy(e => new { e.City, e.Street })
+            .Select(g => new LocationGroup 
+            { 
+                City = g.Key.City, 
+                Street = string.IsNullOrEmpty(g.Key.Street) ? "Unknown street" : g.Key.Street, 
+                Count = g.Count() 
+            })
+            .OrderByDescending(x => x.Count)
+            .Take(10)
+            .ToList();
+
+        // Events over time (last 30 days)
+        var thirtyDaysAgo = DateTime.UtcNow.AddDays(-30);
+        _eventsByDay = _events
+            .Where(e => e.TimeStamp >= thirtyDaysAgo)
+            .GroupBy(e => e.TimeStamp.Date)
+            .Select(g => new DayGroup { Date = g.Key, Count = g.Count() })
+            .OrderBy(x => x.Date)
+            .ToList();
+
+        // Prepare chart data
+        _eventsOverTimeLabels = _eventsByDay.Select(x => x.Date.ToString("MM/dd")).ToList();
+        _eventsOverTimeSeries = new List<ChartSeries>
+        {
+            new ChartSeries { Name = "Events", Data = _eventsByDay.Select(x => (double)x.Count).ToArray() }
+        };
+
+        _isLoading = false;
+        StateHasChanged();
+    }    
+
+    // Helper classes
+    private class EventTypeGroup
+    {
+        public string Type { get; set; } = string.Empty;
+        public int Count { get; set; }
+    }
+
+    private class LocationGroup
+    {
+        public string City { get; set; } = string.Empty;
+        public string Street { get; set; } = string.Empty;
+        public int Count { get; set; }
+    }
+
+    private class CameraGroup
+    {
+        public int Camera { get; set; }
+        public int Count { get; set; }
+    }
+
+    private class DayGroup
+    {
+        public DateTime Date { get; set; }
+        public int Count { get; set; }
+    }
+}

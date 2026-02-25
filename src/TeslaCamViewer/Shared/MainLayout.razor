@@ -17,6 +17,58 @@
                Breakpoint="Breakpoint.Md">
         <MudDrawerContainer>
             <MudGrid Style="margin-top:10px">
+                <!-- Statistics Section -->
+                <MudItem xs="12">
+                    <MudPaper Class="pa-3 mb-2" Elevation="3">
+                        <MudStack Spacing="2">
+                            <MudText Typo="Typo.h6" Align="Align.Center">Statistics</MudText>
+                            
+                            <MudGrid Spacing="1">
+                                <MudItem xs="6">
+                                    <MudPaper Class="pa-2" Style="background-color: var(--mud-palette-primary); color: white;">
+                                        <MudStack Spacing="0" AlignItems="AlignItems.Center">
+                                            <MudText Typo="Typo.h4">@_totalEvents</MudText>
+                                            <MudText Typo="Typo.caption">Total Events</MudText>
+                                        </MudStack>
+                                    </MudPaper>
+                                </MudItem>
+                                <MudItem xs="6">
+                                    <MudPaper Class="pa-2" Style="background-color: var(--mud-palette-secondary); color: white;">
+                                        <MudStack Spacing="0" AlignItems="AlignItems.Center">
+                                            <MudText Typo="Typo.h4">@_eventsThisMonth</MudText>
+                                            <MudText Typo="Typo.caption">This Month</MudText>
+                                        </MudStack>
+                                    </MudPaper>
+                                </MudItem>
+                                <MudItem xs="6">
+                                    <MudPaper Class="pa-2" Style="background-color: var(--mud-palette-tertiary); color: white;">
+                                        <MudStack Spacing="0" AlignItems="AlignItems.Center">
+                                            <MudText Typo="Typo.h4">@_sentryEvents</MudText>
+                                            <MudText Typo="Typo.caption">Sentry</MudText>
+                                        </MudStack>
+                                    </MudPaper>
+                                </MudItem>
+                                <MudItem xs="6">
+                                    <MudPaper Class="pa-2" Style="background-color: var(--mud-palette-info); color: white;">
+                                        <MudStack Spacing="0" AlignItems="AlignItems.Center">
+                                            <MudText Typo="Typo.h4">@_savedEvents</MudText>
+                                            <MudText Typo="Typo.caption">Saved</MudText>
+                                        </MudStack>
+                                    </MudPaper>
+                                </MudItem>
+                            </MudGrid>
+
+                            <MudButton Href="/statistics" 
+                                       Variant="Variant.Text" 
+                                       Color="Color.Primary"
+                                       FullWidth="true"
+                                       EndIcon="@Icons.Material.Filled.ArrowForward">
+                                View Detailed Statistics
+                            </MudButton>
+                        </MudStack>
+                    </MudPaper>
+                </MudItem>
+
                 <MudItem xs="12">
                     <MudText class="d-flex align-center justify-center" Typo="Typo.h6">Select Date</MudText>
                 </MudItem>

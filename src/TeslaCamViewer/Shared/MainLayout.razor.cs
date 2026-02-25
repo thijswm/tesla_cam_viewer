@@ -10,12 +10,30 @@ namespace TeslaCamViewer.Shared
         private List<Event> _events = [];
         private List<ClipItem> _eventsSelected = [];
 
+        private int _totalEvents = 0;
+        private int _eventsThisMonth = 0;
+        private int _sentryEvents = 0;
+        private int _savedEvents = 0;
+
         protected override async Task OnInitializedAsync()
         {
             if (Db != null)
             {
                 _events = await Db.Events.Include(a => a.Clips).ToListAsync();
+                CalculateStatistics();
             }
+        }
+
+        private void CalculateStatistics()
+        {
+            _totalEvents = _events.Count;
+            
+            var now = DateTime.UtcNow;
+            var firstDayOfMonth = new DateTime(now.Year, now.Month, 1);
+            _eventsThisMonth = _events.Count(e => e.TimeStamp >= firstDayOfMonth);
+            
+            _sentryEvents = _events.Count(e => e.Source == "Sentry");
+            _savedEvents = _events.Count(e => e.Source == "Saved");
         }
 
         private string GetDateStyle(DateTime date)
