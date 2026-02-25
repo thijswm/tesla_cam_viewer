@@ -1,7 +1,10 @@
 @page "/statistics"
+@using Microsoft.JSInterop
 @using TeslaCamViewer.Data
 @using Microsoft.EntityFrameworkCore
 @inject AppDbContext Db
+@inject IJSRuntime JS
+
 
 <MudContainer MaxWidth="MaxWidth.ExtraExtraLarge" Class="mt-4">
     <MudText Typo="Typo.h3" Class="mb-4">Tesla Cam Statistics</MudText>
@@ -147,13 +150,24 @@
                 </MudPaper>
             </MudItem>
         </MudGrid>
+
+        <MudGrid Spacing="3" Class="mb-4">
+            <MudItem xs="12">
+                <MudPaper Class="pa-4" Elevation="4">
+                    <MudText Typo="Typo.h6" Class="mb-3">Location Heatmap</MudText>
+                    <div id="teslaMap" style="height: 70vh; width: 100%; border-radius: 12px;"></div>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
     }
 </MudContainer>
 
 @code {
+    private bool _mapReady;
+    private bool _mapInitialized;
     private bool _isLoading = true;
     private List<Event> _events = new();
-    
+
     // Summary stats
     private int _totalEvents;
     private int _sentryEvents;
@@ -162,13 +176,13 @@
 
     // Events by type
     private List<EventTypeGroup> _eventsByType = new();
-    
+
     // Top locations
     private List<LocationGroup> _topLocations = new();
-    
+
     // Events by camera
     private List<CameraGroup> _eventsByCamera = new();
-    
+
     // Events over time
     private List<DayGroup> _eventsByDay = new();
     private List<ChartSeries> _eventsOverTimeSeries = new();
@@ -190,7 +204,7 @@
         _totalEvents = _events.Count;
         _sentryEvents = _events.Count(e => e.Source == "Sentry");
         _savedEvents = _events.Count(e => e.Source == "Saved");
-        
+
         // Unique cities
         _uniqueCities = _events
             .Where(e => !string.IsNullOrEmpty(e.City))
@@ -208,11 +222,11 @@
         _topLocations = _events
             .Where(e => !string.IsNullOrEmpty(e.City))
             .GroupBy(e => new { e.City, e.Street })
-            .Select(g => new LocationGroup 
-            { 
-                City = g.Key.City, 
-                Street = string.IsNullOrEmpty(g.Key.Street) ? "Unknown street" : g.Key.Street, 
-                Count = g.Count() 
+            .Select(g => new LocationGroup
+            {
+                City = g.Key.City,
+                Street = string.IsNullOrEmpty(g.Key.Street) ? "Unknown street" : g.Key.Street,
+                Count = g.Count()
             })
             .OrderByDescending(x => x.Count)
             .Take(10)
@@ -236,7 +250,73 @@
 
         _isLoading = false;
         StateHasChanged();
-    }    
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Only init when loading is finished AND we haven't done it yet
+        if (_isLoading || _mapInitialized)
+            return;
+
+        // Let MudBlazor finish layout and ensure container is sized
+        await Task.Yield();
+        await Task.Delay(150);
+
+        await JS.InvokeVoidAsync("teslaHeatmap.init", "teslaMap", 52.1326, 5.2913, 8);
+        _mapInitialized = true;
+
+        // Add additional delay before loading heatmap data
+        await Task.Delay(100);
+        await Reload();
+    }
+
+    private async Task Reload()
+    {
+        if (!_mapInitialized) return;
+
+        var points = _events
+        .Select(e =>
+        {
+            if (string.IsNullOrWhiteSpace(e.Lat) || string.IsNullOrWhiteSpace(e.Long))
+                return null;
+
+            // Try invariant first (dot decimals), then NL (comma decimals)
+            bool okLat = double.TryParse(e.Lat, System.Globalization.NumberStyles.Any,
+                System.Globalization.CultureInfo.InvariantCulture, out var lat)
+                || double.TryParse(e.Lat, System.Globalization.NumberStyles.Any,
+                new System.Globalization.CultureInfo("nl-NL"), out lat);
+
+            bool okLon = double.TryParse(e.Long, System.Globalization.NumberStyles.Any,
+                System.Globalization.CultureInfo.InvariantCulture, out var lon)
+                || double.TryParse(e.Long, System.Globalization.NumberStyles.Any,
+                new System.Globalization.CultureInfo("nl-NL"), out lon);
+
+            if (!okLat || !okLon) return null;
+
+            // Basic sanity (optional)
+            if (lat is < -90 or > 90) return null;
+            if (lon is < -180 or > 180) return null;
+
+            return new object[] { lat, lon };
+        })
+        .Where(p => p is not null)
+        .Cast<object[]>()
+        .GroupBy(e => new { Lat = e[0], Lon = e[1] })
+        .Select(g => new object[] { g.Key.Lat, g.Key.Lon, (double)g.Count() })
+        .ToArray();
+
+        Console.WriteLine($"Total events: {_events.Count}, Points with coordinates: {points.Length}");
+        if (points.Length > 0)
+        {
+            Console.WriteLine($"First point: Lat={points[0][0]}, Lon={points[0][1]}, Count={points[0][2]}");
+        }
+
+        if (points.Length == 0) return;
+
+        // Use null parameters to let JS use dynamic radius based on zoom level
+        await JS.InvokeVoidAsync("teslaHeatmap.setHeat", points, null, null, null);
+        await JS.InvokeVoidAsync("teslaHeatmap.fitToPoints", points);
+    }
 
     // Helper classes
     private class EventTypeGroup
