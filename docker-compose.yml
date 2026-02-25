@@ -59,6 +59,7 @@ services:
       - ConnectionStrings__Default=Host=db;Port=5432;Database=tesla_cam;Username=tesla;Password=tesla
       - TeslaCam__SentryClipsPath=${SENTRY_CLIPS_PATH}
       - TeslaCam__SavedClipsPath=${SAVED_CLIPS_PATH}
+      - TeslaCam__ModelsPath=${ModelsPath}
     ports:
       - "9002:8080"
 volumes:
