@@ -1,10 +1,7 @@
 using Microsoft.EntityFrameworkCore;
-using System.Diagnostics.Tracing;
 using System.Text.Json;
-using System.Xml.Linq;
 using TeslaCamViewer.Data;
 using FFMpegCore;
-using FFMpegCore.Enums;
 using Minio;
 using Minio.DataModel.Args;
 
@@ -15,17 +12,19 @@ public class ClipScanner : BackgroundService
     private readonly ILogger<ClipScanner> _logger;
     private readonly IServiceProvider _sp;
     private readonly IMinioClient _minio;
-    private readonly IConfiguration _config;
     private readonly string _sentryPath;
     private readonly string _savedPath;
     private readonly string _minioBucket;
+
+    private static readonly TimeSpan FolderQuietPeriod = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan FolderQuietPollInterval = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan FolderQuietStatusInterval = TimeSpan.FromSeconds(5);
 
     public ClipScanner(ILogger<ClipScanner> logger, IServiceProvider sp, IMinioClient minio, IConfiguration config)
     {
         _logger = logger;
         _sp = sp;
         _minio = minio;
-        _config = config;
         _sentryPath = config["TeslaCam:SentryClipsPath"] ?? "/mnt/sentry";
         _savedPath = config["TeslaCam:SavedClipsPath"] ?? "/mnt/saved";
         _minioBucket = config["MinIO:BucketName"] ?? "teslacam-videos";
@@ -33,7 +32,7 @@ public class ClipScanner : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("ClipScanner started, SentryPath={SentryPath}, SavedPath={SavedPath}, MinIOBucket={Bucket}", 
+        _logger.LogInformation("ClipScanner started, SentryPath={SentryPath}, SavedPath={SavedPath}, MinIOBucket={Bucket}",
             _sentryPath, _savedPath, _minioBucket);
 
         // Ensure MinIO bucket exists
@@ -101,6 +100,9 @@ public class ClipScanner : BackgroundService
             var evt = await db.Events.FirstOrDefaultAsync(e => e.FolderName == folderName && e.Source == source, ct);
             if (evt == null)
             {
+                _logger.LogInformation("Waiting for quiet folder: {Folder}", dir);
+                await WaitForDirectoryQuiet(dir, FolderQuietPeriod, FolderQuietPollInterval, FolderQuietStatusInterval, ct);
+
                 evt = new Event { FolderName = folderName, CreatedAt = DateTime.UtcNow, Source = source };
                 var eventJson = Path.Combine(dir, "event.json");
                 if (File.Exists(eventJson))
@@ -272,7 +274,7 @@ public class ClipScanner : BackgroundService
                 duration = mediaInfo.Duration;
                 fileSize = new FileInfo(fileToUpload).Length;
 
-                _logger.LogInformation("Single video for camera {CameraName}: {Size} bytes, duration: {Duration}", 
+                _logger.LogInformation("Single video for camera {CameraName}: {Size} bytes, duration: {Duration}",
                     cameraName, fileSize, duration);
             }
             else
@@ -288,7 +290,7 @@ public class ClipScanner : BackgroundService
                 duration = mediaInfo.Duration;
                 fileSize = new FileInfo(fileToUpload).Length;
 
-                _logger.LogInformation("Stitched {Count} videos for camera {CameraName}: {Size} bytes, duration: {Duration}", 
+                _logger.LogInformation("Stitched {Count} videos for camera {CameraName}: {Size} bytes, duration: {Duration}",
                     mp4Files.Count, cameraName, fileSize, duration);
             }
 
@@ -329,7 +331,7 @@ public class ClipScanner : BackgroundService
     {
         try
         {
-            _logger.LogDebug("Uploading {FilePath} to MinIO bucket {Bucket} as {Path}", 
+            _logger.LogDebug("Uploading {FilePath} to MinIO bucket {Bucket} as {Path}",
                 filePath, _minioBucket, minioPath);
 
             using var fileStream = File.OpenRead(filePath);
@@ -420,5 +422,50 @@ public class ClipScanner : BackgroundService
         int second = int.Parse(parts[5]);
 
         return new DateTime(year, month, day, hour, minute, second, DateTimeKind.Utc);
+    }
+
+    private async Task WaitForDirectoryQuiet(string directory, TimeSpan quietPeriod, TimeSpan pollInterval, TimeSpan statusInterval, CancellationToken ct)
+    {
+        DateTime? lastChange = null;
+        DateTime? lastObserved = null;
+        var lastStatusLog = DateTime.UtcNow;
+
+        while (!ct.IsCancellationRequested)
+        {
+            DateTime? latestWrite = null;
+
+            foreach (var file in Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories))
+            {
+                var writeTime = File.GetLastWriteTimeUtc(file);
+                if (latestWrite == null || writeTime > latestWrite)
+                {
+                    latestWrite = writeTime;
+                }
+            }
+
+            if (latestWrite == null)
+            {
+                latestWrite = DateTime.UtcNow;
+            }
+
+            if (lastObserved == null || latestWrite != lastObserved)
+            {
+                lastObserved = latestWrite;
+                lastChange = DateTime.UtcNow;
+            }
+
+            if (lastChange != null && DateTime.UtcNow - lastChange >= quietPeriod)
+            {
+                return;
+            }
+
+            if (DateTime.UtcNow - lastStatusLog >= statusInterval)
+            {
+                _logger.LogInformation("Still waiting for folder quiet: {Folder}", directory);
+                lastStatusLog = DateTime.UtcNow;
+            }
+
+            await Task.Delay(pollInterval, ct);
+        }
     }
 }
