@@ -453,6 +453,28 @@ public class ClipScanner : BackgroundService
 
         while (!ct.IsCancellationRequested)
         {
+            // Check if required files exist
+            var eventJsonPath = Path.Combine(directory, "event.json");
+            var thumbPngPath = Path.Combine(directory, "thumb.png");
+            var mp4Files = Directory.EnumerateFiles(directory, "*.mp4").ToList();
+
+            bool hasRequiredFiles = File.Exists(eventJsonPath) 
+                && File.Exists(thumbPngPath) 
+                && mp4Files.Count >= 4;
+
+            if (!hasRequiredFiles)
+            {
+                if (DateTime.UtcNow - lastStatusLog >= statusInterval)
+                {
+                    _logger.LogInformation("Waiting for required files in folder: {Folder} (event.json: {EventJson}, thumb.png: {ThumbPng}, mp4 files: {Mp4Count}/4)", 
+                        directory, File.Exists(eventJsonPath), File.Exists(thumbPngPath), mp4Files.Count);
+                    lastStatusLog = DateTime.UtcNow;
+                }
+                
+                await Task.Delay(pollInterval, ct);
+                continue;
+            }
+
             DateTime? latestWrite = null;
 
             foreach (var file in Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories))
@@ -477,6 +499,7 @@ public class ClipScanner : BackgroundService
 
             if (lastChange != null && DateTime.UtcNow - lastChange >= quietPeriod)
             {
+                _logger.LogInformation("Folder is ready: {Folder} (all required files present and quiet period met)", directory);
                 return;
             }
 
