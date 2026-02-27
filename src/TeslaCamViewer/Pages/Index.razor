@@ -130,7 +130,16 @@
                                             var borderStyle = IsEventCamera("front") ? "border: 3px solid red;" : "";
                                             <MudPaper Class="pa-2" Elevation="3" Style="@borderStyle">
                                                 <MudStack Spacing="1">
-                                                    <MudText Typo="Typo.subtitle1" Align="Align.Center" Style="font-weight: 600;">Front Camera</MudText>
+                                                    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                                                        <MudText Typo="Typo.subtitle1" Align="Align.Center" Style="font-weight: 600;">Front Camera</MudText>
+                                                        <MudButton Href="@GetVideoUrl(frontCamera)"
+                                                                   Variant="Variant.Text"
+                                                                   Size="Size.Small"
+                                                                   StartIcon="@Icons.Material.Filled.Download"
+                                                                   Download="@GetDownloadFileName("front")">
+                                                            Download
+                                                        </MudButton>
+                                                    </MudStack>
                                                     <video id="video-front"
                                                            controls
                                                            style="width: 100%; max-height: 25vh; border-radius: 6px; background: #000;"
@@ -155,7 +164,16 @@
                                             var borderStyle = IsEventCamera("left_repeater") ? "border: 3px solid red;" : "";
                                             <MudPaper Class="pa-2" Elevation="3" Style="@borderStyle">
                                                 <MudStack Spacing="1">
-                                                    <MudText Typo="Typo.subtitle1" Align="Align.Center" Style="font-weight: 600;">Left Repeater</MudText>
+                                                    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                                                        <MudText Typo="Typo.subtitle1" Align="Align.Center" Style="font-weight: 600;">Left Repeater</MudText>
+                                                        <MudButton Href="@GetVideoUrl(leftCamera)"
+                                                                   Variant="Variant.Text"
+                                                                   Size="Size.Small"
+                                                                   StartIcon="@Icons.Material.Filled.Download"
+                                                                   Download="@GetDownloadFileName("left_repeater")">
+                                                            Download
+                                                        </MudButton>
+                                                    </MudStack>
                                                     <video id="video-left_repeater"
                                                            controls
                                                            style="width: 100%; max-height: 25vh; border-radius: 6px; background: #000;"
@@ -176,7 +194,16 @@
                                             var borderStyle = IsEventCamera("right_repeater") ? "border: 3px solid red;" : "";
                                             <MudPaper Class="pa-2" Elevation="3" Style="@borderStyle">
                                                 <MudStack Spacing="1">
-                                                    <MudText Typo="Typo.subtitle1" Align="Align.Center" Style="font-weight: 600;">Right Repeater</MudText>
+                                                    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                                                        <MudText Typo="Typo.subtitle1" Align="Align.Center" Style="font-weight: 600;">Right Repeater</MudText>
+                                                        <MudButton Href="@GetVideoUrl(rightCamera)"
+                                                                   Variant="Variant.Text"
+                                                                   Size="Size.Small"
+                                                                   StartIcon="@Icons.Material.Filled.Download"
+                                                                   Download="@GetDownloadFileName("right_repeater")">
+                                                            Download
+                                                        </MudButton>
+                                                    </MudStack>
                                                     <video id="video-right_repeater"
                                                            controls
                                                            style="width: 100%; max-height: 25vh; border-radius: 6px; background: #000;"
@@ -201,7 +228,16 @@
                                             var borderStyle = IsEventCamera("back") ? "border: 3px solid red;" : "";
                                             <MudPaper Class="pa-2" Elevation="3" Style="@borderStyle">
                                                 <MudStack Spacing="1">
-                                                    <MudText Typo="Typo.subtitle1" Align="Align.Center" Style="font-weight: 600;">Back Camera</MudText>
+                                                    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                                                        <MudText Typo="Typo.subtitle1" Align="Align.Center" Style="font-weight: 600;">Back Camera</MudText>
+                                                        <MudButton Href="@GetVideoUrl(backCamera)"
+                                                                   Variant="Variant.Text"
+                                                                   Size="Size.Small"
+                                                                   StartIcon="@Icons.Material.Filled.Download"
+                                                                   Download="@GetDownloadFileName("back")">
+                                                            Download
+                                                        </MudButton>
+                                                    </MudStack>
                                                     <video id="video-back"
                                                            controls
                                                            style="width: 100%; max-height: 25vh; border-radius: 6px; background: #000;"

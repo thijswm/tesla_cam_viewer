@@ -251,6 +251,13 @@ public partial class Index : IDisposable
             return 10;
     }
 
+    private string GetDownloadFileName(string cameraName)
+    {
+        var timestamp = SelectedEvent?.Event?.TimeStamp;
+        var stamp = timestamp?.ToString("yyyyMMdd_HHmmss") ?? "unknown";
+        return $"teslacam_{stamp}_{cameraName}.mp4";
+    }
+
     private string GetVideoUrl(CameraMetadata camera)
     {
         // API endpoint to serve the stitched camera video from byte array
