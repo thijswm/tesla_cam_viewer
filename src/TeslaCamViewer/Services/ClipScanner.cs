@@ -191,32 +191,25 @@ public class ClipScanner : BackgroundService
 
                 // Save the event first to get its ID before creating cameras
                 await db.SaveChangesAsync(ct);
-            }
 
-            foreach (var mp4 in Directory.EnumerateFiles(dir, "*.mp4"))
-            {
-                var name = Path.GetFileName(mp4);
-                var camera = GetCameraFromName(name);
-                var ts = GetTimestampFromName(name) ?? DateTime.UtcNow;
-                if (!await db.Clips.AnyAsync(c => c.Path == mp4, ct))
+                // Simplified - no redundant checks
+                foreach (var mp4 in Directory.EnumerateFiles(dir, "*.mp4"))
                 {
+                    var name = Path.GetFileName(mp4);
+                    var camera = GetCameraFromName(name);
+                    var ts = GetTimestampFromName(name) ?? DateTime.UtcNow;
+                    
                     db.Clips.Add(new Clip { Camera = camera, Path = mp4, Timestamp = ts, Event = evt });
                     clipsInserted++;
                     _logger.LogDebug("Queued clip insert: {Camera} {Timestamp:u} -> {Path}", camera, ts, mp4);
                 }
-                else
-                {
-                    _logger.LogTrace("Clip already indexed, skipping: {Path}", mp4);
-                }
+
+                await StitchAndStoreCameras(evt, dir, db, ct);
+                await db.SaveChangesAsync(ct);
+
+                // Log just the clips for THIS event instead of all clips
+                _logger.LogInformation("Processed folder {FolderName}: clips added={ClipsAdded}", folderName, clipsInserted);
             }
-
-            // Stitch videos and create Camera entities
-            await StitchAndStoreCameras(evt, dir, db, ct);
-
-            // Save all changes (clips + cameras) in one transaction
-            await db.SaveChangesAsync(ct);
-
-            _logger.LogInformation("Processed folder {FolderName}: total clips now={TotalClips}", folderName, await db.Clips.CountAsync(ct));
         }
 
         _logger.LogInformation("Scan completed for {Source}. EventsProcessed={EventsProcessed}, ClipsInserted={ClipsInserted}", source, eventsProcessed, clipsInserted);
@@ -455,19 +448,19 @@ public class ClipScanner : BackgroundService
             var thumbPngPath = Path.Combine(directory, "thumb.png");
             var mp4Files = Directory.EnumerateFiles(directory, "*.mp4").ToList();
 
-            bool hasRequiredFiles = File.Exists(eventJsonPath) 
-                && File.Exists(thumbPngPath) 
+            bool hasRequiredFiles = File.Exists(eventJsonPath)
+                && File.Exists(thumbPngPath)
                 && mp4Files.Count >= 4;
 
             if (!hasRequiredFiles)
             {
                 if (DateTime.UtcNow - lastStatusLog >= statusInterval)
                 {
-                    _logger.LogInformation("Waiting for required files in folder: {Folder} (event.json: {EventJson}, thumb.png: {ThumbPng}, mp4 files: {Mp4Count}/4)", 
+                    _logger.LogInformation("Waiting for required files in folder: {Folder} (event.json: {EventJson}, thumb.png: {ThumbPng}, mp4 files: {Mp4Count}/4)",
                         directory, File.Exists(eventJsonPath), File.Exists(thumbPngPath), mp4Files.Count);
                     lastStatusLog = DateTime.UtcNow;
                 }
-                
+
                 await Task.Delay(pollInterval, ct);
                 continue;
             }
