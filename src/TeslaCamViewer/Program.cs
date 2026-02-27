@@ -28,8 +28,10 @@ builder.Host.UseSerilog(Log.Logger);
 Log.Information("Starting TeslaCamViewer");
 
 // Add DbContext factory for components that need concurrent access
-builder.Services.AddPooledDbContextFactory<AppDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
+builder.Services.AddDbContextFactory<AppDbContext>(options =>
+    options.UseNpgsql(
+        builder.Configuration.GetConnectionString("Default"),
+        npgsql => npgsql.EnableRetryOnFailure()));
 
 // Configure MinIO client
 builder.Services.AddSingleton<IMinioClient>(sp =>

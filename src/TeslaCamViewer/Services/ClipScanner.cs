@@ -97,13 +97,14 @@ public class ClipScanner : BackgroundService
 
         using var scope = _sp.CreateScope();
         var dbFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<AppDbContext>>();
-        await using var db = await dbFactory.CreateDbContextAsync(ct);
 
         var eventsProcessed = 0;
         var clipsInserted = 0;
 
         foreach (var dir in Directory.EnumerateDirectories(root))
         {
+            await using var db = await dbFactory.CreateDbContextAsync(ct);
+
             var folderName = Path.GetFileName(dir);
             var evt = await db.Events.FirstOrDefaultAsync(e => e.FolderName == folderName && e.Source == source, ct);
             if (evt == null)
@@ -161,7 +162,7 @@ public class ClipScanner : BackgroundService
                             && double.TryParse(evt.Long, NumberStyles.Float, CultureInfo.InvariantCulture, out var lonValue))
                         {
                             _logger.LogInformation("Reverse geocoding enabled for {FolderName} at {Lat},{Lon}", folderName, latValue, lonValue);
-                             await TryPopulateAddressAsync(evt, latValue, lonValue, ct);
+                            await TryPopulateAddressAsync(evt, latValue, lonValue, ct);
                             _logger.LogInformation("Reverse geocoding result for {FolderName}: Street={Street}, City={City}", folderName, evt.Street, evt.City);
                         }
                         _logger.LogDebug("Parsed event.json for {FolderName}: Type={Type}", folderName, evt.Type);
@@ -170,7 +171,6 @@ public class ClipScanner : BackgroundService
                     {
                         _logger.LogWarning(ex, "Failed to read event.json in {Dir}", dir);
                     }
-
 
                     var eventThumbnail = Path.Combine(dir, "thumb.png");
                     if (File.Exists(eventThumbnail))
