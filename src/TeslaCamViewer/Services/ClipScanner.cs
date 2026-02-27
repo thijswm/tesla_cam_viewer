@@ -18,6 +18,7 @@ public class ClipScanner : BackgroundService
     private readonly string _savedPath;
     private readonly string _minioBucket;
     private readonly bool _enableReverseGeocoding;
+    private readonly int _scanIntervalSeconds;
     private static readonly HttpClient GeoHttpClient = CreateGeoHttpClient();
 
     private static readonly TimeSpan FolderQuietPeriod = TimeSpan.FromSeconds(10);
@@ -33,12 +34,13 @@ public class ClipScanner : BackgroundService
         _savedPath = config["TeslaCam:SavedClipsPath"] ?? "/mnt/saved";
         _minioBucket = config["MinIO:BucketName"] ?? "teslacam-videos";
         _enableReverseGeocoding = config.GetValue<bool>("TeslaCam:EnableReverseGeocoding");
+        _scanIntervalSeconds = config.GetValue<int>("TeslaCam:ScanIntervalSeconds", 60);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("ClipScanner started, SentryPath={SentryPath}, SavedPath={SavedPath}, MinIOBucket={Bucket}",
-            _sentryPath, _savedPath, _minioBucket);
+        _logger.LogInformation("ClipScanner started, SentryPath={SentryPath}, SavedPath={SavedPath}, MinIOBucket={Bucket}, ScanInterval={ScanInterval}s",
+            _sentryPath, _savedPath, _minioBucket, _scanIntervalSeconds);
 
         // Ensure MinIO bucket exists
         await EnsureBucketExists(stoppingToken);
@@ -55,7 +57,7 @@ public class ClipScanner : BackgroundService
                 _logger.LogError(ex, "Scan error");
             }
 
-            await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
+            await Task.Delay(TimeSpan.FromSeconds(_scanIntervalSeconds), stoppingToken);
         }
     }
 
@@ -106,13 +108,8 @@ public class ClipScanner : BackgroundService
             var evt = await db.Events.FirstOrDefaultAsync(e => e.FolderName == folderName && e.Source == source, ct);
             if (evt == null)
             {
-                _logger.LogInformation("Waiting for quiet folder: {Folder}", dir);
-#if DEBUG
-                _logger.LogDebug("DEBUG mode: Skipping quiet wait for folder {Folder}", dir);
-#else
+                _logger.LogInformation("Waiting for folder: {Folder} to be quiet", dir);
                 await WaitForDirectoryQuiet(dir, FolderQuietPeriod, FolderQuietPollInterval, FolderQuietStatusInterval, ct);
-#endif
-
                 evt = new Event { FolderName = folderName, CreatedAt = DateTime.UtcNow, Source = source };
                 var eventJson = Path.Combine(dir, "event.json");
                 if (File.Exists(eventJson))
