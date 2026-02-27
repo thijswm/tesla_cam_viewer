@@ -62,7 +62,7 @@
                                 </MudItem>
                             </MudGrid>
 
-                            <MudButton Href="/statistics"
+                            <MudButton OnClick="OnStatisticsClicked"
                                        Variant="Variant.Text"
                                        Color="Color.Primary"
                                        FullWidth="true"
@@ -172,6 +172,17 @@
     private void ToggleDrawer()
     {
         _drawerOpen = !_drawerOpen;
+    }
+
+    private async Task OnStatisticsClicked()
+    {
+        if (_currentBreakpoint < Breakpoint.Md)
+        {
+            _drawerOpen = false;
+        }
+
+        Navigation.NavigateTo("/statistics");
+        StateHasChanged();
     }
 
     private async Task OnClipClicked(ClipItem clipItem)

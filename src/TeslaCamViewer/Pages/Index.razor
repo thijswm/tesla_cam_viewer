@@ -108,7 +108,7 @@
                                         @for (int i = 0; i <= GetTimeMarkerCount(); i++)
                                         {
                                             var markerTime = (videoDuration / GetTimeMarkerCount()) * i;
-                                            <MudText Typo="Typo.caption" Style="font-size: 10px; color: rgba(255,255,255,0.6);">
+                                            <MudText Typo="Typo.caption" Class="timeline-marker" Style="font-size: 10px; color: rgba(255,255,255,0.6);">
                                                 @FormatTimeWithTimestamp(markerTime)
                                             </MudText>
                                         }
@@ -230,3 +230,11 @@
         <MudAlert Severity="Severity.Normal">Select an event from the sidebar to view clips.</MudAlert>
     }
 </MudContainer>
+
+<style>
+    @@media (max-width: 600px) {
+        .timeline-marker:nth-child(odd) {
+            display: none;
+        }
+    }
+</style>
