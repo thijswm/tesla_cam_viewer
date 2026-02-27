@@ -1,14 +1,27 @@
 ﻿window.teslaHeatmap = (function () {
     let map, heat;
+    let eventMap, eventMarker;
 
     function init(elementId, centerLat, centerLon, zoom) {
         const el = document.getElementById(elementId);
         if (!el) return;
 
-        if (map) {
-            map.setView([centerLat, centerLon], zoom);
-            map.invalidateSize(true);
+        if (el.clientWidth === 0 || el.clientHeight === 0) {
+            setTimeout(() => init(elementId, centerLat, centerLon, zoom), 200);
             return;
+        }
+
+        if (map) {
+            const container = map.getContainer();
+            if (container !== el || !document.body.contains(container)) {
+                map.remove();
+                map = null;
+                heat = null;
+            } else {
+                map.setView([centerLat, centerLon], zoom);
+                map.invalidateSize(true);
+                return;
+            }
         }
 
         if (el._leaflet_id) el._leaflet_id = null;
@@ -104,5 +117,56 @@
         }, 100);
     }
 
-    return { init, setHeat };
+    function initEventMap(elementId, lat, lon, zoom) {
+        const el = document.getElementById(elementId);
+        if (!el) return;
+
+        if (el.clientWidth === 0 || el.clientHeight === 0) {
+            setTimeout(() => initEventMap(elementId, lat, lon, zoom), 200);
+            return;
+        }
+
+        if (eventMap) {
+            const container = eventMap.getContainer();
+            if (container !== el || !document.body.contains(container)) {
+                eventMap.remove();
+                eventMap = null;
+                eventMarker = null;
+            } else {
+                eventMap.setView([lat, lon], zoom);
+                if (eventMarker) {
+                    eventMarker.setLatLng([lat, lon]);
+                } else {
+                    eventMarker = L.marker([lat, lon]).addTo(eventMap);
+                }
+                eventMap.invalidateSize(true);
+                return;
+            }
+        }
+
+        if (el._leaflet_id) el._leaflet_id = null;
+
+        eventMap = L.map(elementId).setView([lat, lon], zoom);
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '&copy; OpenStreetMap'
+        }).addTo(eventMap);
+
+        eventMarker = L.marker([lat, lon]).addTo(eventMap);
+        eventMap.invalidateSize(true);
+    }
+
+    function destroyMap() {
+        if (eventMap) {
+            eventMap.remove();
+            eventMap = null;
+            eventMarker = null;
+        }
+    }
+
+    return { init, setHeat, initEventMap, destroyMap };
 })();
+
+window.initEventMap = window.teslaHeatmap.initEventMap;
+window.destroyMap = window.teslaHeatmap.destroyMap;

@@ -3,6 +3,7 @@
 @inherits LayoutComponentBase
 @implements IBrowserViewportObserver
 @inject IJSRuntime JS
+@inject NavigationManager Navigation
 
 <MudLayout>
     <MudAppBar Color="Color.Primary" Elevation="1">
@@ -180,6 +181,13 @@
         {
             _drawerOpen = false;
         }
+
+        var relativePath = Navigation.ToBaseRelativePath(Navigation.Uri);
+        if (!string.IsNullOrEmpty(relativePath))
+        {
+            Navigation.NavigateTo("/");
+        }
+
         StateHasChanged();
     }
 

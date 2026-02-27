@@ -20,10 +20,10 @@
     {
         <!-- Summary Cards -->
         <MudGrid Spacing="3" Class="mb-4">
-            <MudItem xs="12" sm="6" md="3">
+            <MudItem xs="6" sm="6" md="3">
                 <MudCard Elevation="3">
-                    <MudCardContent>
-                        <MudStack Spacing="1" AlignItems="AlignItems.Center">
+                    <MudCardContent Class="stats-card-content">
+                        <MudStack Spacing="1" AlignItems="AlignItems.Center" Class="stats-card-stack">
                             <MudIcon Icon="@Icons.Material.Filled.Event" Size="Size.Large" Color="Color.Primary" />
                             <MudText Typo="Typo.h3">@_totalEvents</MudText>
                             <MudText Typo="Typo.body2" Color="Color.Secondary">Total Events</MudText>
@@ -31,10 +31,10 @@
                     </MudCardContent>
                 </MudCard>
             </MudItem>
-            <MudItem xs="12" sm="6" md="3">
+            <MudItem xs="6" sm="6" md="3">
                 <MudCard Elevation="3">
-                    <MudCardContent>
-                        <MudStack Spacing="1" AlignItems="AlignItems.Center">
+                    <MudCardContent Class="stats-card-content">
+                        <MudStack Spacing="1" AlignItems="AlignItems.Center" Class="stats-card-stack">
                             <MudIcon Icon="@Icons.Material.Filled.Warning" Size="Size.Large" Color="Color.Warning" />
                             <MudText Typo="Typo.h3">@_sentryEvents</MudText>
                             <MudText Typo="Typo.body2" Color="Color.Secondary">Sentry Events</MudText>
@@ -42,10 +42,10 @@
                     </MudCardContent>
                 </MudCard>
             </MudItem>
-            <MudItem xs="12" sm="6" md="3">
+            <MudItem xs="6" sm="6" md="3">
                 <MudCard Elevation="3">
-                    <MudCardContent>
-                        <MudStack Spacing="1" AlignItems="AlignItems.Center">
+                    <MudCardContent Class="stats-card-content">
+                        <MudStack Spacing="1" AlignItems="AlignItems.Center" Class="stats-card-stack">
                             <MudIcon Icon="@Icons.Material.Filled.BookmarkBorder" Size="Size.Large" Color="Color.Info" />
                             <MudText Typo="Typo.h3">@_savedEvents</MudText>
                             <MudText Typo="Typo.body2" Color="Color.Secondary">Saved Events</MudText>
@@ -53,10 +53,10 @@
                     </MudCardContent>
                 </MudCard>
             </MudItem>
-            <MudItem xs="12" sm="6" md="3">
+            <MudItem xs="6" sm="6" md="3">
                 <MudCard Elevation="3">
-                    <MudCardContent>
-                        <MudStack Spacing="1" AlignItems="AlignItems.Center">
+                    <MudCardContent Class="stats-card-content">
+                        <MudStack Spacing="1" AlignItems="AlignItems.Center" Class="stats-card-stack">
                             <MudIcon Icon="@Icons.Material.Filled.LocationOn" Size="Size.Large" Color="Color.Success" />
                             <MudText Typo="Typo.h3">@_uniqueCities</MudText>
                             <MudText Typo="Typo.body2" Color="Color.Secondary">Unique Cities</MudText>
@@ -70,7 +70,7 @@
         <MudGrid Spacing="3" Class="mb-4">
             <!-- Events by Type -->
             <MudItem xs="12" md="4">
-                <MudPaper Class="pa-4" Elevation="3" Style="height: 100%; min-height: 400px;">
+                <MudPaper Class="pa-4" Elevation="3" Style="height: 100%; min-height: 200px;">
                     <MudText Typo="Typo.h6" Class="mb-3">Events by Type</MudText>
                     @if (_eventsByType.Any())
                     {
@@ -97,7 +97,7 @@
 
             <!-- Events Over Time -->
             <MudItem xs="12" md="4">
-                <MudPaper Class="pa-4" Elevation="3" Style="height: 100%; min-height: 400px;">
+                <MudPaper Class="pa-4" Elevation="3" Style="height: 100%; min-height: 200px;">
                     <MudText Typo="Typo.h6" Class="mb-3">Events Over Time (Last 30 Days)</MudText>
                     @if (_eventsByDay.Any())
                     {
@@ -105,7 +105,7 @@
                                   ChartSeries="@_eventsOverTimeSeries"
                                   XAxisLabels="@_eventsOverTimeLabels.ToArray()"
                                   Width="100%"
-                                  Height="300px">
+                                  Height="200px">
                         </MudChart>
                     }
                     else
@@ -121,27 +121,48 @@
                     <MudText Typo="Typo.h6" Class="mb-3">Top 10 Locations</MudText>
                     @if (_topLocations.Any())
                     {
-                        <MudTable Items="@_topLocations" Hover="true" Dense="true" Striped="true" Elevation="0">
-                            <HeaderContent>
-                                <MudTh>City</MudTh>
-                                <MudTh>Street</MudTh>
-                                <MudTh Style="text-align: right">Count</MudTh>
-                            </HeaderContent>
-                            <RowTemplate>
-                                <MudTd DataLabel="City">
-                                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
-                                        <MudIcon Icon="@Icons.Material.Filled.LocationCity" Size="Size.Small" Color="Color.Primary" />
-                                        <MudText Typo="Typo.body2">@context.City</MudText>
-                                    </MudStack>
-                                </MudTd>
-                                <MudTd DataLabel="Street">
-                                    <MudText Typo="Typo.body2">@context.Street</MudText>
-                                </MudTd>
-                                <MudTd DataLabel="Count" Style="text-align: right">
-                                    <MudChip T="string" Color="Color.Primary" Size="Size.Small">@context.Count</MudChip>
-                                </MudTd>
-                            </RowTemplate>
-                        </MudTable>
+                        <MudHidden Breakpoint="Breakpoint.SmAndDown">
+                            <MudTable Items="@_topLocations" Hover="true" Dense="true" Striped="true" Elevation="0">
+                                <HeaderContent>
+                                    <MudTh>City</MudTh>
+                                    <MudTh>Street</MudTh>
+                                    <MudTh Style="text-align: right">Count</MudTh>
+                                </HeaderContent>
+                                <RowTemplate>
+                                    <MudTd DataLabel="City">
+                                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                                            <MudIcon Icon="@Icons.Material.Filled.LocationCity" Size="Size.Small" Color="Color.Primary" />
+                                            <MudText Typo="Typo.body2">@context.City</MudText>
+                                        </MudStack>
+                                    </MudTd>
+                                    <MudTd DataLabel="Street">
+                                        <MudText Typo="Typo.body2">@context.Street</MudText>
+                                    </MudTd>
+                                    <MudTd DataLabel="Count" Style="text-align: right">
+                                        <MudChip T="string" Color="Color.Primary" Size="Size.Small">@context.Count</MudChip>
+                                    </MudTd>
+                                </RowTemplate>
+                            </MudTable>
+                        </MudHidden>
+                        <MudHidden Breakpoint="Breakpoint.MdAndUp">
+                            <MudStack Spacing="2">
+                                @foreach (var location in _topLocations)
+                                {
+                                    <MudPaper Class="pa-3" Elevation="1">
+                                        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                                            <MudStack Spacing="0">
+                                                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                                                    <MudIcon Icon="@Icons.Material.Filled.LocationCity" Size="Size.Small" Color="Color.Primary" />
+                                                    <MudText Typo="Typo.subtitle2">@location.City</MudText>
+                                                </MudStack>
+                                                <MudText Typo="Typo.body2" Color="Color.Secondary">@location.Street</MudText>
+                                            </MudStack>
+                                            <MudChip T="string" Color="Color.Primary" Size="Size.Small">@location.Count</MudChip>
+                                        </MudStack>
+                                    </MudPaper>
+                                }
+                            </MudStack>
+                        </MudHidden>
                     }
                     else
                     {
@@ -161,6 +182,26 @@
         </MudGrid>
     }
 </MudContainer>
+
+<style>
+    @@media (max-width: 600px) {
+        .stats-card-content {
+            padding: 12px;
+        }
+
+        .stats-card-stack {
+            gap: 4px;
+        }
+
+        .stats-card-content .mud-typography-h3 {
+            font-size: 1.75rem;
+        }
+
+        .stats-card-content .mud-icon-root {
+            font-size: 1.75rem;
+        }
+    }
+</style>
 
 @code {
     private bool _mapInitialized;

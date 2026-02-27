@@ -95,14 +95,20 @@ public partial class Index : IDisposable
             Logger.LogInformation("Attempting to initialize map for event {EventId}, Lat={Lat}, Long={Long}",
                 SelectedEvent.Event.Id, SelectedEvent.Event.Lat, SelectedEvent.Event.Long);
 
-            // Parse latitude and longitude from strings
-            if (double.TryParse(SelectedEvent.Event.Lat, System.Globalization.NumberStyles.Any,
-                System.Globalization.CultureInfo.InvariantCulture, out var lat) &&
-                double.TryParse(SelectedEvent.Event.Long, System.Globalization.NumberStyles.Any,
-                System.Globalization.CultureInfo.InvariantCulture, out var lon))
+            var latParsed = double.TryParse(SelectedEvent.Event.Lat, System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture, out var lat)
+                || double.TryParse(SelectedEvent.Event.Lat, System.Globalization.NumberStyles.Any,
+                    new System.Globalization.CultureInfo("nl-NL"), out lat);
+
+            var lonParsed = double.TryParse(SelectedEvent.Event.Long, System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture, out var lon)
+                || double.TryParse(SelectedEvent.Event.Long, System.Globalization.NumberStyles.Any,
+                    new System.Globalization.CultureInfo("nl-NL"), out lon);
+
+            if (latParsed && lonParsed)
             {
-                // Give the DOM more time to render the map container
                 await Task.Delay(300);
+                await JS.InvokeVoidAsync("initEventMap", "event-map", lat, lon, 13);
             }
             else
             {
