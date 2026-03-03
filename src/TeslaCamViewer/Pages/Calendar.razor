@@ -1,0 +1,144 @@
+@page "/calendar"
+@using TeslaCamViewer.Data
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-2">
+    <MudStack Spacing="2">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+            <MudIconButton Icon="@Icons.Material.Filled.ChevronLeft"
+                           Color="Color.Primary"
+                           OnClick="PreviousMonth"
+                           aria-label="Previous month" />
+            <MudText Typo="Typo.h5">@_currentMonth.ToString("MMMM yyyy")</MudText>
+            <MudIconButton Icon="@Icons.Material.Filled.ChevronRight"
+                           Color="Color.Primary"
+                           OnClick="NextMonth"
+                           aria-label="Next month" />
+        </MudStack>
+
+        <div class="calendar-grid calendar-header">
+            @foreach (var dayName in _dayNames)
+            {
+                <div class="calendar-header-cell">@dayName</div>
+            }
+        </div>
+
+        <div class="calendar-grid calendar-body">
+            @foreach (var cell in _calendarCells)
+            {
+                <MudPaper Class="calendar-cell" Elevation="2">
+                    @if (cell.Date is null)
+                    {
+                        <div class="calendar-empty"></div>
+                    }
+                    else
+                    {
+                        <div class="calendar-day-number">@cell.Date.Value.Day</div>
+
+                        @if (!string.IsNullOrEmpty(cell.Thumbnail))
+                        {
+                            <img src="@cell.Thumbnail" class="calendar-thumb" alt="Event thumbnail" />
+                        }
+                        else
+                        {
+                            <div class="calendar-placeholder">No clips</div>
+                        }
+
+                        @if (cell.EventCount > 0)
+                        {
+                            <div class="calendar-count">@cell.EventCount</div>
+                        }
+                    }
+                </MudPaper>
+            }
+        </div>
+    </MudStack>
+</MudContainer>
+
+<style>
+    .calendar-grid {
+        display: grid;
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+        gap: 8px;
+    }
+
+    .calendar-header-cell {
+        text-align: center;
+        font-weight: 600;
+        padding: 6px 0;
+        color: var(--mud-palette-text-secondary);
+    }
+
+    .calendar-cell {
+        position: relative;
+        min-height: 150px;
+        overflow: hidden;
+        border-radius: 8px;
+        background-color: var(--mud-palette-surface);
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .calendar-empty {
+        min-height: 150px;
+    }
+
+    .calendar-day-number {
+        position: absolute;
+        top: 6px;
+        left: 8px;
+        font-weight: 600;
+        font-size: 14px;
+        color: var(--mud-palette-text-primary);
+        z-index: 2;
+        background: rgba(0, 0, 0, 0.35);
+        padding: 2px 6px;
+        border-radius: 6px;
+    }
+
+    .calendar-thumb {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        flex: 1;
+    }
+
+    .calendar-placeholder {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--mud-palette-text-secondary);
+        font-size: 12px;
+    }
+
+    .calendar-count {
+        position: absolute;
+        bottom: 6px;
+        right: 8px;
+        background: var(--mud-palette-error);
+        color: white;
+        padding: 2px 6px;
+        border-radius: 10px;
+        font-size: 12px;
+        font-weight: 600;
+    }
+
+    @@media (max-width: 900px) {
+        .calendar-cell,
+        .calendar-empty {
+            min-height: 120px;
+        }
+    }
+
+    @@media (max-width: 600px) {
+        .calendar-cell,
+        .calendar-empty {
+            min-height: 100px;
+        }
+
+        .calendar-header-cell {
+            font-size: 12px;
+        }
+    }
+</style>

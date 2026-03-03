@@ -3,6 +3,20 @@ body {
 }
 
 /* ===============================
+   Drawer spacing
+   =============================== */
+
+.drawer-section {
+    margin: 0 8px 12px 8px;
+}
+
+@media (max-width: 600px) {
+    .drawer-section {
+        margin: 0 6px 10px 6px;
+    }
+}
+
+/* ===============================
    TeslaCam – Clip Cards
    =============================== */
 

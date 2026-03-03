@@ -24,7 +24,7 @@
             <MudGrid Style="margin-top:10px">
                 <!-- Statistics Section -->
                 <MudItem xs="12">
-                    <MudPaper Class="pa-3 mb-2" Elevation="3">
+                    <MudPaper Class="pa-3 drawer-section" Elevation="3">
                         <MudStack Spacing="2">
                             <MudText Typo="Typo.h6" Align="Align.Center">Statistics</MudText>
                             <MudGrid Spacing="1">
@@ -73,28 +73,46 @@
                     </MudPaper>
                 </MudItem>
 
+                <!-- Statistics Section -->
                 <MudItem xs="12">
-                    <MudText class="d-flex align-center justify-center" Typo="Typo.h6">Select Date</MudText>
+                    <MudPaper Class="pa-3 drawer-section" Elevation="3">
+                        <MudStack Spacing="2">
+                            <MudText Typo="Typo.h6" Align="Align.Center">Calendar</MudText>
+                            <MudButton OnClick="OnCalendarClicked"
+                                       Variant="Variant.Text"
+                                       Color="Color.Primary"
+                                       FullWidth="true"
+                                       EndIcon="@Icons.Material.Filled.ArrowForward">
+                                View Calendar with clips
+                            </MudButton>
+                        </MudStack>
+                    </MudPaper>
                 </MudItem>
+
                 <MudItem xs="12">
-                    @if (_currentBreakpoint < Breakpoint.Md)
-                    {
-                        <MudDatePicker class="d-flex align-center justify-center"
-                                       Label="Select Date"
-                                       PickerVariant="PickerVariant.Dialog"
-                                       IsDateDisabledFunc="IsNotEventDate"
-                                       AdditionalDateClassesFunc="GetDateStyle"
-                                       DateChanged="OnDateSelected" />
-                    }
-                    else
-                    {
-                        <MudDatePicker class="d-flex align-center justify-center"
-                                       Label="Select Date"
-                                       PickerVariant="PickerVariant.Static"
-                                       IsDateDisabledFunc="IsNotEventDate"
-                                       AdditionalDateClassesFunc="GetDateStyle"
-                                       DateChanged="OnDateSelected" />
-                    }
+                    <MudPaper Class="pa-3 drawer-section" Elevation="3">
+                        <MudStack Spacing="2">
+                            <MudText class="d-flex align-center justify-center" Typo="Typo.h6">Select Date</MudText>
+                            @if (_currentBreakpoint < Breakpoint.Md)
+                            {
+                                <MudDatePicker class="d-flex align-center justify-center"
+                                               Label="Select Date"
+                                               PickerVariant="PickerVariant.Dialog"
+                                               IsDateDisabledFunc="IsNotEventDate"
+                                               AdditionalDateClassesFunc="GetDateStyle"
+                                               DateChanged="OnDateSelected" />
+                            }
+                            else
+                            {
+                                <MudDatePicker class="d-flex align-center justify-center"
+                                               Label="Select Date"
+                                               PickerVariant="PickerVariant.Static"
+                                               IsDateDisabledFunc="IsNotEventDate"
+                                               AdditionalDateClassesFunc="GetDateStyle"
+                                               DateChanged="OnDateSelected" />
+                            }
+                        </MudStack>
+                    </MudPaper>
                 </MudItem>
                 <MudItem xs="12">
                     <MudText class="d-flex align-center justify-center" Typo="Typo.h6">Clips</MudText>
@@ -103,7 +121,7 @@
                     <MudStack Spacing="2">
                         @foreach (var theEvent in _eventsSelected)
                         {
-                            <MudPaper Elevation="4" Class="teslacam-card">
+                            <MudPaper Elevation="4" Class="teslacam-card drawer-section">
                                 <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="teslacam-row">
 
                                     <!-- Thumb -->
@@ -184,6 +202,17 @@
     private void ToggleDrawer()
     {
         _drawerOpen = !_drawerOpen;
+    }
+
+    private async Task OnCalendarClicked()
+    {
+        if (_currentBreakpoint < Breakpoint.Md)
+        {
+            _drawerOpen = false;
+        }
+
+        Navigation.NavigateTo("/calendar");
+        StateHasChanged();
     }
 
     private async Task OnStatisticsClicked()
