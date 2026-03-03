@@ -77,12 +77,24 @@
                     <MudText class="d-flex align-center justify-center" Typo="Typo.h6">Select Date</MudText>
                 </MudItem>
                 <MudItem xs="12">
-                    <MudDatePicker class="d-flex align-center justify-center"
-                                   Label="Select Date"
-                                   PickerVariant="PickerVariant.Static"
-                                   IsDateDisabledFunc="IsNotEventDate"
-                                   AdditionalDateClassesFunc="GetDateStyle"
-                                   DateChanged="OnDateSelected" />
+                    @if (_currentBreakpoint < Breakpoint.Md)
+                    {
+                        <MudDatePicker class="d-flex align-center justify-center"
+                                       Label="Select Date"
+                                       PickerVariant="PickerVariant.Dialog"
+                                       IsDateDisabledFunc="IsNotEventDate"
+                                       AdditionalDateClassesFunc="GetDateStyle"
+                                       DateChanged="OnDateSelected" />
+                    }
+                    else
+                    {
+                        <MudDatePicker class="d-flex align-center justify-center"
+                                       Label="Select Date"
+                                       PickerVariant="PickerVariant.Static"
+                                       IsDateDisabledFunc="IsNotEventDate"
+                                       AdditionalDateClassesFunc="GetDateStyle"
+                                       DateChanged="OnDateSelected" />
+                    }
                 </MudItem>
                 <MudItem xs="12">
                     <MudText class="d-flex align-center justify-center" Typo="Typo.h6">Clips</MudText>
