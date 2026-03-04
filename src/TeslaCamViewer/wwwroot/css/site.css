@@ -134,3 +134,25 @@ body {
     padding: 4px 12px !important;
     min-width: 0;
 }
+
+/* ===============================
+   Selected event highlight
+   =============================== */
+
+.selected-event {
+    animation: pulse-border 2s ease-in-out infinite;
+}
+
+@keyframes pulse-border {
+    0%, 100% {
+        box-shadow: 0 6px 18px rgba(0,0,0,0.45), 
+                    inset 0 1px 0 rgba(255,255,255,0.04),
+                    0 0 0 2px var(--mud-palette-primary);
+    }
+    50% {
+        box-shadow: 0 14px 40px rgba(0,0,0,0.55), 
+                    inset 0 1px 0 rgba(255,255,255,0.06),
+                    0 0 0 2px var(--mud-palette-primary),
+                    0 0 20px rgba(var(--mud-palette-primary-rgb), 0.4);
+    }
+}

@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using TeslaCamViewer.Data;
 
 namespace TeslaCamViewer.Pages;
@@ -7,6 +8,8 @@ namespace TeslaCamViewer.Pages;
 public partial class Calendar
 {
     [Inject] public AppDbContext Db { get; set; } = default!;
+    [Inject] public NavigationManager Navigation { get; set; } = default!;
+    [Inject] public ILogger<Calendar>? Logger { get; set; }
 
     private readonly string[] _dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     private DateTime _currentMonth = new(DateTime.Today.Year, DateTime.Today.Month, 1);
@@ -51,16 +54,6 @@ public partial class Calendar
             });
         }
 
-        var remainder = cells.Count % 7;
-        if (remainder != 0)
-        {
-            var trailing = 7 - remainder;
-            for (var i = 0; i < trailing; i++)
-            {
-                cells.Add(CalendarCell.Empty());
-            }
-        }
-
         _calendarCells = cells;
     }
 
@@ -85,6 +78,19 @@ public partial class Calendar
 
         var base64 = Convert.ToBase64String(thumbnail);
         return $"data:image/png;base64,{base64}";
+    }
+
+    private void OnDateClicked(DateTime? date)
+    {
+        Console.WriteLine($"OnDateClicked called with date: {date}");
+        Logger?.LogInformation("Calendar date clicked: {Date}", date);
+        
+        if (date.HasValue)
+        {
+            var url = $"/events?date={date.Value:yyyy-MM-dd}";
+            Console.WriteLine($"Navigating to: {url}");
+            Navigation.NavigateTo(url);
+        }
     }
 
     private sealed class CalendarCell

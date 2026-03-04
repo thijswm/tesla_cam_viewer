@@ -1,0 +1,427 @@
+@page "/"
+@page "/events"
+@using TeslaCamViewer.Data
+@using TeslaCamViewer.Shared
+@using Microsoft.EntityFrameworkCore
+
+<MudContainer MaxWidth="MaxWidth.ExtraExtraLarge" Class="mt-2">
+    <MudText Typo="Typo.h5" Class="mb-2">Filtered Events</MudText>
+
+    @if (isLoading)
+    {
+        <MudStack AlignItems="AlignItems.Center" Spacing="3" Class="pa-8">
+            <MudProgressCircular Indeterminate Color="Color.Primary" Size="Size.Large" />
+            <MudText Typo="Typo.h6">Loading events...</MudText>
+        </MudStack>
+    }
+    else
+    {
+        <MudGrid Spacing="2">
+            <!-- Left Column: Event List with Filters -->
+            <MudItem xs="12" md="4" lg="3">
+                <MudPaper Class="pa-3" Elevation="3" Style="position: sticky; top: 10px; max-height: calc(100vh - 100px); overflow-y: auto;">
+                    <MudStack Spacing="2">
+                        <!-- Filter Controls -->
+                        <MudText Typo="Typo.h6" Align="Align.Center">Filter Events</MudText>
+                        
+                        <MudSelect T="string" 
+                                   Label="City" 
+                                   Value="@filterCity" 
+                                   ValueChanged="OnCityFilterChanged"
+                                   Clearable="true"
+                                   AdornmentIcon="@Icons.Material.Filled.LocationCity"
+                                   AdornmentColor="Color.Primary"
+                                   Variant="Variant.Outlined"
+                                   Margin="Margin.Dense">
+                            @foreach (var city in _availableCities)
+                            {
+                                <MudSelectItem Value="@city">@city</MudSelectItem>
+                            }
+                        </MudSelect>
+
+                        <MudDatePicker Label="Date" 
+                                       Date="@filterDate"
+                                       DateChanged="OnDateFilterChanged"
+                                       Clearable="true"
+                                       AdornmentIcon="@Icons.Material.Filled.CalendarToday"
+                                       AdornmentColor="Color.Primary"
+                                       Variant="Variant.Outlined"
+                                       Margin="Margin.Dense"
+                                       IsDateDisabledFunc="IsNotEventDate"
+                                       AdditionalDateClassesFunc="GetDateStyle" />
+
+                        <MudSelect T="string" 
+                                   Label="Source" 
+                                   Value="@filterSource" 
+                                   ValueChanged="OnSourceFilterChanged"
+                                   Clearable="true"
+                                   AdornmentIcon="@Icons.Material.Filled.Source"
+                                   AdornmentColor="Color.Primary"
+                                   Variant="Variant.Outlined"
+                                   Margin="Margin.Dense">
+                            @foreach (var source in _availableSources)
+                            {
+                                <MudSelectItem Value="@source">@source</MudSelectItem>
+                            }
+                        </MudSelect>
+                        
+                        @if (!string.IsNullOrEmpty(filterCity) || filterDate.HasValue || !string.IsNullOrEmpty(filterSource))
+                        {
+                            <MudButton OnClick="ClearAllFilters" 
+                                       Variant="Variant.Outlined" 
+                                       Color="Color.Secondary"
+                                       StartIcon="@Icons.Material.Filled.Clear"
+                                       Size="Size.Small"
+                                       FullWidth="true">
+                                Clear All Filters
+                            </MudButton>
+                        }
+
+                        <MudDivider />
+
+                        <!-- Event Count -->
+                        <MudText Typo="Typo.subtitle1" Align="Align.Center">
+                            Events (@_filteredEvents.Count)
+                        </MudText>
+
+                        <!-- Event List -->
+                        @if (_filteredEvents.Count == 0)
+                        {
+                            <MudText Typo="Typo.body2" Align="Align.Center" Color="Color.Secondary">
+                                No events found matching the filters.
+                            </MudText>
+                        }
+                        else
+                        {
+                            @foreach (var clipItem in _filteredEvents)
+                            {
+                                var isSelected = _selectedEvent?.Event.Id == clipItem.Event.Id;
+                                <MudPaper Elevation="@(isSelected ? 8 : 4)" 
+                                          Class="@($"teslacam-card drawer-section {(isSelected ? "selected-event" : "")}")"
+                                          Style="@(isSelected ? "border: 2px solid var(--mud-palette-primary);" : "")">
+                                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="teslacam-row">
+
+                                        <!-- Thumb -->
+                                        <div class="teslacam-thumb-wrap">
+                                            <MudImage Src="@clipItem.Thumbnail"
+                                                      Alt="clip thumbnail"
+                                                      Class="teslacam-thumb"
+                                                      ObjectFit="ObjectFit.Cover" />
+                                        </div>
+
+                                        <!-- Info -->
+                                        <div class="teslacam-info">
+                                            <MudText Typo="Typo.h6" Class="teslacam-title">@clipItem.Event?.Source</MudText>
+                                            <MudText Typo="Typo.body2" Class="teslacam-sub">@clipItem.Event?.City</MudText>
+                                        </div>
+
+                                        <!-- Right -->
+                                        <div class="teslacam-right">
+                                            <div class="teslacam-meta">
+                                                <MudText Typo="Typo.subtitle1" Class="teslacam-time">
+                                                    @(clipItem.Event.TimeStamp.ToString("HH:mm:ss") ?? "")
+                                                </MudText>
+                                                <MudText Typo="Typo.caption" Class="teslacam-day">
+                                                    @(clipItem.Event.TimeStamp.ToString("ddd") ?? "")
+                                                </MudText>
+                                            </div>
+
+                                            <MudButton OnClick="() => OnClipClicked(clipItem)"
+                                                       Color="@(isSelected ? Color.Secondary : Color.Primary)"
+                                                       Variant="Variant.Filled"
+                                                       Size="Size.Small"
+                                                       StartIcon="@Icons.Material.Filled.PlayArrow"
+                                                       Class="teslacam-show">
+                                                @(isSelected ? "Playing" : "Show")
+                                            </MudButton>
+                                        </div>
+
+                                    </MudStack>
+                                </MudPaper>
+                            }
+                        }
+                    </MudStack>
+                </MudPaper>
+            </MudItem>
+
+            <!-- Right Column: Video Player -->
+            <MudItem xs="12" md="8" lg="9">
+                @if (_selectedEvent is not null)
+                {
+                    @if (isLoadingCameras)
+                    {
+                        <MudStack AlignItems="AlignItems.Center" Spacing="3" Class="pa-8">
+                            <MudProgressCircular Indeterminate Color="Color.Primary" Size="Size.Large" />
+                            <MudText Typo="Typo.h6">Loading cameras...</MudText>
+                        </MudStack>
+                    }
+                    else
+                    {
+                        <!-- Event Layout with Map and Timeline -->
+                        <MudStack Spacing="2">
+                            
+                            <!-- Row 1: Map and Timeline side by side -->
+                            <MudGrid Spacing="2">
+                                <!-- Left: Event Location Map -->
+                                @if (!string.IsNullOrEmpty(_selectedEvent?.Event?.Lat) && !string.IsNullOrEmpty(_selectedEvent?.Event?.Long))
+                                {
+                                    <MudItem xs="12" md="6" lg="4">
+                                        <MudPaper Class="pa-2 event-map" Elevation="3">
+                                            <MudStack Spacing="1">
+                                                <MudText Typo="Typo.subtitle2" Align="Align.Center">Event Location</MudText>
+                                                <div id="event-map" class="event-map-canvas" style="height: 280px; width: 100%; border-radius: 6px;"></div>
+                                                @if (!string.IsNullOrEmpty(_selectedEvent?.Event?.City))
+                                                {
+                                                    <MudText Typo="Typo.caption" Align="Align.Center" Color="Color.Secondary">
+                                                        @_selectedEvent.Event.City
+                                                    </MudText>
+                                                }
+                                                @if (!string.IsNullOrEmpty(_selectedEvent?.Event?.Street))
+                                                {
+                                                    <MudText Typo="Typo.caption" Align="Align.Center" Color="Color.Secondary">
+                                                        @_selectedEvent.Event.Street
+                                                    </MudText>
+                                                }
+                                            </MudStack>
+                                        </MudPaper>
+                                    </MudItem>
+                                }
+
+                                <!-- Right: Timeline -->
+                                @if (cameras != null && cameras.Count > 0)
+                                {
+                                    <MudItem xs="12" md="@(!string.IsNullOrEmpty(_selectedEvent?.Event?.Lat) && !string.IsNullOrEmpty(_selectedEvent?.Event?.Long) ? 6 : 12)" 
+                                             lg="@(!string.IsNullOrEmpty(_selectedEvent?.Event?.Lat) && !string.IsNullOrEmpty(_selectedEvent?.Event?.Long) ? 8 : 12)">
+                                        <MudPaper Class="pa-2 timeline-panel" Elevation="3">
+                                            <MudStack Spacing="1">
+                                                <MudText Typo="Typo.subtitle2" Align="Align.Center">Timeline</MudText>
+                                                
+                                                <!-- Playback Controls Row -->
+                                                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Justify="Justify.Center">
+                                                    <!-- Playback Controls -->
+                                                    <MudIconButton Icon="@Icons.Material.Filled.FastRewind"
+                                                                   Color="Color.Default"
+                                                                   Size="Size.Small"
+                                                                   OnClick="SkipBackward"
+                                                                   aria-label="Skip backward 5 seconds" />
+
+                                                    <MudIconButton Icon="@(isPlaying? Icons.Material.Filled.Pause : Icons.Material.Filled.PlayArrow)"
+                                                                   Color="@(isPlaying ? Color.Secondary : Color.Primary)"
+                                                                   Size="Size.Small"
+                                                                   OnClick="TogglePlayPause"
+                                                                   aria-label="@(isPlaying ? "Pause" : "Play")" />
+
+                                                    <MudIconButton Icon="@Icons.Material.Filled.FastForward"
+                                                                   Color="Color.Default"
+                                                                   Size="Size.Small"
+                                                                   OnClick="SkipForward"
+                                                                   aria-label="Skip forward 5 seconds" />
+                                                </MudStack>
+
+                                                <!-- Slider Row -->
+                                                <div style="width: 100%; position: relative;">
+                                                    <MudSlider T="double"
+                                                               Value="@currentTime"
+                                                               Min="0"
+                                                               Max="@videoDuration"
+                                                               Step="0.1"
+                                                               Color="Color.Primary"
+                                                               Variant="Variant.Filled"
+                                                               ValueChanged="OnTimelineChanged"
+                                                               Style="width: 100%;" />
+                                    
+                                                    <!-- Event trigger marker -->
+                                                    @if (minTimestamp.HasValue && _selectedEvent?.Event?.TimeStamp != null)
+                                                    {
+                                                        var eventOffsetSeconds = (_selectedEvent.Event.TimeStamp - minTimestamp.Value).TotalSeconds;
+                                                        if (eventOffsetSeconds >= 0 && eventOffsetSeconds <= videoDuration)
+                                                        {
+                                                            var eventPosition = (eventOffsetSeconds / videoDuration) * 100;
+                                                            <div style="position: absolute; left: @(eventPosition)%; top: 0; bottom: 16px; width: 3px; background-color: red; z-index: 1000; pointer-events: none;">
+                                                                <div style="position: absolute; top: -6px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid red;"></div>
+                                                            </div>
+                                                        }
+                                                    }
+                                    
+                                                    <!-- Time markers -->
+                                                    <div style="display: flex; justify-content: space-between; margin-top: 2px; padding: 0 6px;">
+                                                        @for (int i = 0; i <= GetTimeMarkerCount(); i++)
+                                                        {
+                                                            var markerTime = (videoDuration / GetTimeMarkerCount()) * i;
+                                                            <MudText Typo="Typo.caption" Class="timeline-marker" Style="font-size: 9px; color: rgba(255,255,255,0.6);">
+                                                                @FormatTimeWithTimestamp(markerTime)
+                                                            </MudText>
+                                                        }
+                                                    </div>
+                                                </div>
+                                            </MudStack>
+                                        </MudPaper>
+                                    </MudItem>
+                                }
+                            </MudGrid>
+
+                            <!-- Row 2: Camera Videos -->
+                            @if (cameras != null && cameras.Count > 0)
+                            {
+                                <!-- Tesla Camera Layout - All Videos Playing -->
+                                <MudStack Spacing="2">
+
+                                    <!-- Row 1: Front and Back Cameras -->
+                                    <MudGrid>
+                                        <MudItem xs="12" md="6">
+                                            @{
+                                                var frontCamera = GetCameraByName("front");
+                                                if (frontCamera != null)
+                                                {
+                                                    var borderStyle = IsEventCamera("front") ? "border: 3px solid red;" : "";
+                                                    <MudPaper Class="pa-2" Elevation="3" Style="@borderStyle">
+                                                        <MudStack Spacing="1">
+                                                            <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                                                                <MudText Typo="Typo.subtitle1" Align="Align.Center" Style="font-weight: 600;">Front Camera</MudText>
+                                                                <MudButton Href="@GetVideoUrl(frontCamera)"
+                                                                           Variant="Variant.Text"
+                                                                           Size="Size.Small"
+                                                                           StartIcon="@Icons.Material.Filled.Download"
+                                                                           download="@GetDownloadFileName("front")">
+                                                                    Download
+                                                                </MudButton>
+                                                            </MudStack>
+                                                            <video id="video-front"
+                                                                   controls
+                                                                   class="camera-video"
+                                                                   style="width: 100%; max-height: 22vh; border-radius: 6px; background: #000;"
+                                                                   data-camera="front">
+                                                                <source src="@GetVideoUrl(frontCamera)" type="video/mp4">
+                                                                Your browser does not support the video tag.
+                                                            </video>
+                                                        </MudStack>
+                                                    </MudPaper>
+                                                }
+                                            }
+                                        </MudItem>
+                                        <MudItem xs="12" md="6">
+                                            @{
+                                                var backCamera = GetCameraByName("back");
+                                                if (backCamera != null)
+                                                {
+                                                    var borderStyle = IsEventCamera("back") ? "border: 3px solid red;" : "";
+                                                    <MudPaper Class="pa-2" Elevation="3" Style="@borderStyle">
+                                                        <MudStack Spacing="1">
+                                                            <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                                                                <MudText Typo="Typo.subtitle1" Align="Align.Center" Style="font-weight: 600;">Back Camera</MudText>
+                                                                <MudButton Href="@GetVideoUrl(backCamera)"
+                                                                           Variant="Variant.Text"
+                                                                           Size="Size.Small"
+                                                                           StartIcon="@Icons.Material.Filled.Download"
+                                                                           download="@GetDownloadFileName("back")">
+                                                                    Download
+                                                                </MudButton>
+                                                            </MudStack>
+                                                            <video id="video-back"
+                                                                   controls
+                                                                   class="camera-video"
+                                                                   style="width: 100%; max-height: 22vh; border-radius: 6px; background: #000;"
+                                                                   data-camera="back">
+                                                                <source src="@GetVideoUrl(backCamera)" type="video/mp4">
+                                                                Your browser does not support the video tag.
+                                                            </video>
+                                                        </MudStack>
+                                                    </MudPaper>
+                                                }
+                                            }
+                                        </MudItem>
+                                    </MudGrid>
+
+                                    <!-- Row 2: Left and Right Repeater Cameras -->
+                                    <MudGrid>
+                                        <MudItem xs="12" md="6">
+                                            @{
+                                                var leftCamera = GetCameraByName("left_repeater");
+                                                if (leftCamera != null)
+                                                {
+                                                    var borderStyle = IsEventCamera("left_repeater") ? "border: 3px solid red;" : "";
+                                                    <MudPaper Class="pa-2" Elevation="3" Style="@borderStyle">
+                                                        <MudStack Spacing="1">
+                                                            <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                                                                <MudText Typo="Typo.subtitle1" Align="Align.Center" Style="font-weight: 600;">Left Repeater</MudText>
+                                                                <MudButton Href="@GetVideoUrl(leftCamera)"
+                                                                           Variant="Variant.Text"
+                                                                           Size="Size.Small"
+                                                                           StartIcon="@Icons.Material.Filled.Download"
+                                                                           download="@GetDownloadFileName("left_repeater")">
+                                                                    Download
+                                                                </MudButton>
+                                                            </MudStack>
+                                                            <video id="video-left_repeater"
+                                                                   controls
+                                                                   class="camera-video"
+                                                                   style="width: 100%; max-height: 22vh; border-radius: 6px; background: #000;"
+                                                                   data-camera="left_repeater">
+                                                                <source src="@GetVideoUrl(leftCamera)" type="video/mp4">
+                                                                Your browser does not support the video tag.
+                                                            </video>
+                                                        </MudStack>
+                                                    </MudPaper>
+                                                }
+                                            }
+                                        </MudItem>
+                                        <MudItem xs="12" md="6">
+                                            @{
+                                                var rightCamera = GetCameraByName("right_repeater");
+                                                if (rightCamera != null)
+                                                {
+                                                    var borderStyle = IsEventCamera("right_repeater") ? "border: 3px solid red;" : "";
+                                                    <MudPaper Class="pa-2" Elevation="3" Style="@borderStyle">
+                                                        <MudStack Spacing="1">
+                                                            <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                                                                <MudText Typo="Typo.subtitle1" Align="Align.Center" Style="font-weight: 600;">Right Repeater</MudText>
+                                                                <MudButton Href="@GetVideoUrl(rightCamera)"
+                                                                           Variant="Variant.Text"
+                                                                           Size="Size.Small"
+                                                                           StartIcon="@Icons.Material.Filled.Download"
+                                                                           download="@GetDownloadFileName("right_repeater")">
+                                                                    Download
+                                                                </MudButton>
+                                                            </MudStack>
+                                                            <video id="video-right_repeater"
+                                                                   controls
+                                                                   class="camera-video"
+                                                                   style="width: 100%; max-height: 22vh; border-radius: 6px; background: #000;"
+                                                                   data-camera="right_repeater">
+                                                                <source src="@GetVideoUrl(rightCamera)" type="video/mp4">
+                                                                Your browser does not support the video tag.
+                                                            </video>
+                                                        </MudStack>
+                                                    </MudPaper>
+                                                }
+                                            }
+                                        </MudItem>
+                                    </MudGrid>
+
+                                </MudStack>
+                            }
+                            else
+                            {
+                                <MudPaper Class="pa-8" Elevation="3">
+                                    <MudStack AlignItems="AlignItems.Center" Spacing="2">
+                                        <MudIcon Icon="@Icons.Material.Filled.Videocam" Size="Size.Large" Color="Color.Secondary" />
+                                        <MudText Typo="Typo.h6" Color="Color.Secondary">No cameras available for this event</MudText>
+                                    </MudStack>
+                                </MudPaper>
+                            }
+                        </MudStack>
+                    }
+                }
+                else
+                {
+                    <MudPaper Class="pa-8" Elevation="3">
+                        <MudStack AlignItems="AlignItems.Center" Spacing="2">
+                            <MudIcon Icon="@Icons.Material.Filled.TouchApp" Size="Size.Large" Color="Color.Secondary" />
+                            <MudText Typo="Typo.h6" Color="Color.Secondary">Select an event to view cameras</MudText>
+                        </MudStack>
+                    </MudPaper>
+                }
+            </MudItem>
+        </MudGrid>
+    }
+</MudContainer>

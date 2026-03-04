@@ -73,6 +73,22 @@
                     </MudPaper>
                 </MudItem>
 
+                <!-- Events Section -->
+                <MudItem xs="12">
+                    <MudPaper Class="pa-3 drawer-section" Elevation="3">
+                        <MudStack Spacing="2">
+                            <MudText Typo="Typo.h6" Align="Align.Center">Events</MudText>
+                            <MudButton OnClick="OnEventsClicked"
+                                       Variant="Variant.Text"
+                                       Color="Color.Primary"
+                                       FullWidth="true"
+                                       EndIcon="@Icons.Material.Filled.ArrowForward">
+                                View events
+                            </MudButton>
+                        </MudStack>
+                    </MudPaper>
+                </MudItem>
+
                 <!-- Statistics Section -->
                 <MudItem xs="12">
                     <MudPaper Class="pa-3 drawer-section" Elevation="3">
@@ -88,90 +104,12 @@
                         </MudStack>
                     </MudPaper>
                 </MudItem>
-
-                <MudItem xs="12">
-                    <MudPaper Class="pa-3 drawer-section" Elevation="3">
-                        <MudStack Spacing="2">
-                            <MudText class="d-flex align-center justify-center" Typo="Typo.h6">Select Date</MudText>
-                            @if (_currentBreakpoint < Breakpoint.Md)
-                            {
-                                <MudDatePicker class="d-flex align-center justify-center"
-                                               Label="Select Date"
-                                               PickerVariant="PickerVariant.Dialog"
-                                               IsDateDisabledFunc="IsNotEventDate"
-                                               AdditionalDateClassesFunc="GetDateStyle"
-                                               DateChanged="OnDateSelected" />
-                            }
-                            else
-                            {
-                                <MudDatePicker class="d-flex align-center justify-center"
-                                               Label="Select Date"
-                                               PickerVariant="PickerVariant.Static"
-                                               IsDateDisabledFunc="IsNotEventDate"
-                                               AdditionalDateClassesFunc="GetDateStyle"
-                                               DateChanged="OnDateSelected" />
-                            }
-                        </MudStack>
-                    </MudPaper>
-                </MudItem>
-                <MudItem xs="12">
-                    <MudText class="d-flex align-center justify-center" Typo="Typo.h6">Clips</MudText>
-                </MudItem>
-                <MudItem xs="12">
-                    <MudStack Spacing="2">
-                        @foreach (var theEvent in _eventsSelected)
-                        {
-                            <MudPaper Elevation="4" Class="teslacam-card drawer-section">
-                                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="teslacam-row">
-
-                                    <!-- Thumb -->
-                                    <div class="teslacam-thumb-wrap">
-                                        <MudImage Src="@theEvent.Thumbnail"
-                                                  Alt="clip thumbnail"
-                                                  Class="teslacam-thumb"
-                                                  ObjectFit="ObjectFit.Cover" />
-                                    </div>
-
-                                    <!-- Info -->
-                                    <div class="teslacam-info">
-                                        <MudText Typo="Typo.h6" Class="teslacam-title">@theEvent.Event?.Source</MudText>
-                                        <MudText Typo="Typo.body2" Class="teslacam-sub">@theEvent.Event?.City</MudText>
-                                    </div>
-
-                                    <!-- Right -->
-                                    <div class="teslacam-right">
-                                        <div class="teslacam-meta">
-                                            <MudText Typo="Typo.subtitle1" Class="teslacam-time">
-                                                @(theEvent.Event.TimeStamp.ToString("HH:mm:ss") ?? "")
-                                            </MudText>
-                                            <MudText Typo="Typo.caption" Class="teslacam-day">
-                                                @(theEvent.Event.TimeStamp.ToString("ddd") ?? "")
-                                            </MudText>
-                                        </div>
-
-                                        <MudButton OnClick="() => OnClipClicked(theEvent)"
-                                                   Color="Color.Primary"
-                                                   Variant="Variant.Filled"
-                                                   Size="Size.Small"
-                                                   StartIcon="@Icons.Material.Filled.PlayArrow"
-                                                   Class="teslacam-show">
-                                            Show
-                                        </MudButton>
-                                    </div>
-
-                                </MudStack>
-                            </MudPaper>
-                        }
-                    </MudStack>
-                </MudItem>
             </MudGrid>
         </MudDrawerContainer>
     </MudDrawer>
 
     <MudMainContent>
-        <CascadingValue Value="@SelectedEvent">
-            @Body
-        </CascadingValue>
+        @Body
     </MudMainContent>
 </MudLayout>
 
@@ -226,20 +164,14 @@
         StateHasChanged();
     }
 
-    private async Task OnClipClicked(ClipItem clipItem)
+    private async Task OnEventsClicked()
     {
-        SelectedEvent = clipItem;
         if (_currentBreakpoint < Breakpoint.Md)
         {
             _drawerOpen = false;
         }
 
-        var relativePath = Navigation.ToBaseRelativePath(Navigation.Uri);
-        if (!string.IsNullOrEmpty(relativePath))
-        {
-            Navigation.NavigateTo("/");
-        }
-
+        Navigation.NavigateTo("/events");
         StateHasChanged();
     }
 
