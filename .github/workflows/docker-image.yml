@@ -1,21 +1,41 @@
 name: Build and Push docker image
+
 on:
   workflow_dispatch:
     inputs:
       tag:
         type: string
         required: true
-        description: 'Docker tag'
+        description: 'Tag / Version'
+
+permissions:
+  contents: write   # <-- allow pushing tags with GITHUB_TOKEN
+
 jobs:
   docker:
     runs-on: ubuntu-latest
     environment: docker_environment
+
     steps:
       - name: Checkout the repo
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create git tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${{ inputs.tag }}" -m "Release ${{ inputs.tag }}"
+          git push origin "${{ inputs.tag }}"
+
       - name: Build docker image
         run: |
-          docker build -f ./src/TeslaCamViewer/Dockerfile -t thijswm/tesla-cam-viewer:${{ inputs.tag }} -t thijswm/tesla-cam-viewer:latest ./src/TeslaCamViewer
+          docker build -f ./src/TeslaCamViewer/Dockerfile \
+            -t thijswm/tesla-cam-viewer:${{ inputs.tag }} \
+            -t thijswm/tesla-cam-viewer:latest \
+            ./src/TeslaCamViewer
+
       - name: push image
         run: |
           docker login -u thijswm -p ${{ secrets.DOCKER_TOKEN }}
