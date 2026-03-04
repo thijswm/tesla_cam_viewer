@@ -6,7 +6,10 @@ on:
       tag:
         type: string
         required: true
-        description: 'Version / Tag'
+        description: 'Tag / Version'
+
+permissions:
+  contents: write   # <-- allow pushing tags with GITHUB_TOKEN
 
 jobs:
   docker:
@@ -21,10 +24,10 @@ jobs:
 
       - name: Create git tag
         run: |
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
-          git tag ${{ inputs.tag }}
-          git push origin ${{ inputs.tag }}
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${{ inputs.tag }}" -m "Release ${{ inputs.tag }}"
+          git push origin "${{ inputs.tag }}"
 
       - name: Build docker image
         run: |
