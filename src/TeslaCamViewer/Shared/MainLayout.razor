@@ -17,7 +17,7 @@
     <MudDrawer @bind-Open="@_drawerOpen"
                ClipMode="DrawerClipMode.Always"
                Elevation="1"
-               Width="400px"
+               Width="300px"
                Variant="@DrawerVariant.Responsive"
                Breakpoint="Breakpoint.Md">
         <MudDrawerContainer>
@@ -116,7 +116,7 @@
 @code {
     [Inject]
     private IBrowserViewportService BrowserViewportService { get; set; } = null!;
-    private bool _drawerOpen = true;
+    private bool _drawerOpen = false;
     public ClipItem? SelectedEvent { get; set; }
     private Breakpoint _currentBreakpoint;
 
@@ -178,6 +178,7 @@
     Task IBrowserViewportObserver.NotifyBrowserViewportChangeAsync(BrowserViewportEventArgs browserViewportEventArgs)
     {
         _currentBreakpoint = browserViewportEventArgs.Breakpoint;
+        _drawerOpen = _currentBreakpoint >= Breakpoint.Md;
         return InvokeAsync(StateHasChanged);
     }
 }

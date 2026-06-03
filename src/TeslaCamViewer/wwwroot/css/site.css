@@ -156,3 +156,34 @@ body {
                     0 0 20px rgba(var(--mud-palette-primary-rgb), 0.4);
     }
 }
+
+/* ===============================
+   Mobile responsiveness
+   =============================== */
+
+.event-list-panel {
+    position: sticky;
+    top: 10px;
+    max-height: calc(100vh - 100px);
+    overflow-y: auto;
+}
+
+@media (max-width: 959px) {
+    .event-list-panel {
+        position: static;
+        max-height: 70vh;
+    }
+
+    .teslacam-thumb-wrap {
+        flex: 0 0 100px;
+        height: 56px;
+    }
+
+    .teslacam-right {
+        flex: 0 0 72px;
+    }
+
+    .timeline-marker {
+        font-size: 7px !important;
+    }
+}
