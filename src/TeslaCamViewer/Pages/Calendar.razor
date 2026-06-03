@@ -1,7 +1,7 @@
 @page "/calendar"
 @using TeslaCamViewer.Data
 
-<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-2">
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-2 calendar-container">
     <MudStack Spacing="2">
         <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
             <MudIconButton Icon="@Icons.Material.Filled.ChevronLeft"
@@ -18,47 +18,57 @@
         <div class="calendar-grid calendar-header">
             @foreach (var dayName in _dayNames)
             {
-                <div class="calendar-header-cell">@dayName</div>
+                <div class="calendar-header-cell">
+                    <span class="day-full">@dayName</span>
+                    <span class="day-short">@dayName[0]</span>
+                </div>
             }
         </div>
 
-        <div class="calendar-grid calendar-body">
+        <div class="calendar-grid calendar-body" @ontouchstart="OnTouchStart" @ontouchend="OnTouchEnd" @ontouchend:preventDefault="false">
             @foreach (var cell in _calendarCells)
             {
-                var currentCell = cell;
-                <div class="calendar-cell-container">
-                    <MudPaper Class="calendar-cell" Elevation="2">
-                        @if (cell.Date is null)
-                        {
-                            <div class="calendar-empty"></div>
-                        }
-                        else
-                        {
-                            <div class="calendar-day-number">@cell.Date.Value.Day</div>
-
+                var cellDate = cell.Date;
+                var hasEvents = cell.EventCount > 0;
+                @if (hasEvents && cellDate.HasValue)
+                {
+                    <a href="/events?date=@(cellDate.Value.ToString("yyyy-MM-dd"))" class="calendar-cell-container calendar-cell-clickable" style="text-decoration: none; color: inherit;">
+                        <MudPaper Class="calendar-cell" Elevation="2">
+                            <div class="calendar-day-number">@cellDate.Value.Day</div>
                             @if (!string.IsNullOrEmpty(cell.Thumbnail))
                             {
                                 <img src="@cell.Thumbnail" class="calendar-thumb" alt="Event thumbnail" />
                             }
                             else
                             {
-                                <div class="calendar-placeholder">No clips</div>
+                                <div class="calendar-placeholder">
+                                    <span class="no-clips-text">No clips</span>
+                                </div>
                             }
-
-                            @if (cell.EventCount > 0)
+                            <div class="calendar-count-badge">
+                                @cell.EventCount
+                            </div>
+                        </MudPaper>
+                    </a>
+                }
+                else
+                {
+                    <div class="calendar-cell-container">
+                        <MudPaper Class="calendar-cell" Elevation="2">
+                            @if (cell.Date is null)
                             {
-                                <MudButton Class="calendar-count" 
-                                           Color="Color.Error" 
-                                           Variant="Variant.Filled"
-                                           Size="Size.Small"
-                                           OnClick="() => OnDateClicked(currentCell.Date)"
-                                           Style="position: absolute; bottom: 6px; right: 8px; z-index: 10; min-width: 32px; padding: 4px 8px; border-radius: 12px; font-weight: 600;">
-                                    @cell.EventCount
-                                </MudButton>
+                                <div class="calendar-empty"></div>
                             }
-                        }
-                    </MudPaper>
-                </div>
+                            else
+                            {
+                                <div class="calendar-day-number">@cellDate!.Value.Day</div>
+                                <div class="calendar-placeholder">
+                                    <span class="no-clips-text">No clips</span>
+                                </div>
+                            }
+                        </MudPaper>
+                    </div>
+                }
             }
         </div>
     </MudStack>
@@ -78,8 +88,13 @@
         color: var(--mud-palette-text-secondary);
     }
 
+    .day-short {
+        display: none;
+    }
+
     .calendar-cell-container {
         position: relative;
+        display: block;
     }
 
     .calendar-cell {
@@ -92,6 +107,20 @@
         display: flex;
         flex-direction: column;
         align-items: stretch;
+    }
+
+    .calendar-cell-clickable {
+        cursor: pointer;
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .calendar-cell-clickable:hover {
+        transform: scale(1.03);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    }
+
+    .calendar-cell-clickable:active {
+        transform: scale(0.97);
     }
 
     .calendar-empty {
@@ -128,17 +157,19 @@
         font-size: 12px;
     }
 
-    .calendar-count {
-        transition: all 0.2s ease !important;
-    }
-
-    .calendar-count:hover {
-        transform: scale(1.15) !important;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5) !important;
-    }
-
-    .calendar-count:active {
-        transform: scale(1.05) !important;
+    .calendar-count-badge {
+        position: absolute;
+        bottom: 6px;
+        right: 8px;
+        z-index: 10;
+        min-width: 24px;
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-weight: 600;
+        font-size: 12px;
+        text-align: center;
+        background-color: var(--mud-palette-error);
+        color: white;
     }
 
     @@media (max-width: 900px) {
@@ -150,14 +181,47 @@
     }
 
     @@media (max-width: 600px) {
+        .calendar-grid {
+            gap: 3px;
+        }
+
         .calendar-cell,
         .calendar-empty {
-            min-height: 100px;
-            height: 100px;
+            min-height: 70px;
+            height: 70px;
+            border-radius: 6px;
         }
 
         .calendar-header-cell {
             font-size: 12px;
+            padding: 4px 0;
+        }
+
+        .day-full {
+            display: none;
+        }
+
+        .day-short {
+            display: inline;
+        }
+
+        .calendar-day-number {
+            font-size: 11px;
+            top: 3px;
+            left: 4px;
+            padding: 1px 4px;
+        }
+
+        .no-clips-text {
+            display: none;
+        }
+
+        .calendar-count-badge {
+            bottom: 3px;
+            right: 4px;
+            min-width: 20px;
+            padding: 1px 5px;
+            font-size: 10px;
         }
     }
 </style>

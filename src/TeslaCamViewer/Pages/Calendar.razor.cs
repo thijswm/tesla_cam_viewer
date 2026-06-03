@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Web;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using TeslaCamViewer.Data;
@@ -14,6 +15,8 @@ public partial class Calendar
     private readonly string[] _dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     private DateTime _currentMonth = new(DateTime.Today.Year, DateTime.Today.Month, 1);
     private List<CalendarCell> _calendarCells = [];
+
+    private double _touchStartX;
 
     protected override async Task OnInitializedAsync()
     {
@@ -82,14 +85,43 @@ public partial class Calendar
 
     private void OnDateClicked(DateTime? date)
     {
-        Console.WriteLine($"OnDateClicked called with date: {date}");
-        Logger?.LogInformation("Calendar date clicked: {Date}", date);
-        
-        if (date.HasValue)
+        if (!date.HasValue) return;
+
+        var url = $"/events?date={date.Value:yyyy-MM-dd}";
+        Logger?.LogInformation("Calendar date clicked: {Date}, navigating to {Url}", date, url);
+        Navigation.NavigateTo(url);
+    }
+
+    private void OnCellClicked(CalendarCell cell)
+    {
+        if (cell.Date.HasValue && cell.EventCount > 0)
         {
-            var url = $"/events?date={date.Value:yyyy-MM-dd}";
-            Console.WriteLine($"Navigating to: {url}");
-            Navigation.NavigateTo(url);
+            OnDateClicked(cell.Date);
+        }
+    }
+
+    private void OnTouchStart(TouchEventArgs e)
+    {
+        if (e.Touches.Length > 0)
+        {
+            _touchStartX = e.Touches[0].ClientX;
+        }
+    }
+
+    private async Task OnTouchEnd(TouchEventArgs e)
+    {
+        if (e.ChangedTouches.Length > 0)
+        {
+            var deltaX = e.ChangedTouches[0].ClientX - _touchStartX;
+            if (Math.Abs(deltaX) > 100) // Use larger threshold to avoid interfering with taps
+            {
+                if (deltaX > 0)
+                    await PreviousMonth();
+                else
+                    await NextMonth();
+
+                StateHasChanged();
+            }
         }
     }
 
