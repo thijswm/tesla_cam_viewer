@@ -506,4 +506,38 @@ public partial class FilteredEvents : IDisposable
     {
         StopTimelineUpdater();
     }
+
+    private async Task NavigateToPreviousEvent()
+    {
+        if (_selectedEvent == null || _filteredEvents.Count == 0) return;
+        var currentIndex = _filteredEvents.FindIndex(e => e.Event.Id == _selectedEvent.Event.Id);
+        if (currentIndex > 0)
+        {
+            await OnClipClicked(_filteredEvents[currentIndex - 1]);
+        }
+    }
+
+    private async Task NavigateToNextEvent()
+    {
+        if (_selectedEvent == null || _filteredEvents.Count == 0) return;
+        var currentIndex = _filteredEvents.FindIndex(e => e.Event.Id == _selectedEvent.Event.Id);
+        if (currentIndex < _filteredEvents.Count - 1)
+        {
+            await OnClipClicked(_filteredEvents[currentIndex + 1]);
+        }
+    }
+
+    private bool HasPreviousEvent()
+    {
+        if (_selectedEvent == null || _filteredEvents.Count == 0) return false;
+        var currentIndex = _filteredEvents.FindIndex(e => e.Event.Id == _selectedEvent.Event.Id);
+        return currentIndex > 0;
+    }
+
+    private bool HasNextEvent()
+    {
+        if (_selectedEvent == null || _filteredEvents.Count == 0) return false;
+        var currentIndex = _filteredEvents.FindIndex(e => e.Event.Id == _selectedEvent.Event.Id);
+        return currentIndex < _filteredEvents.Count - 1;
+    }
 }

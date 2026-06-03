@@ -7,7 +7,7 @@
 
 
 <MudContainer MaxWidth="MaxWidth.ExtraExtraLarge" Class="mt-4">
-    <MudText Typo="Typo.h3" Class="mb-4">Tesla Cam Statistics</MudText>
+    <MudText Typo="Typo.h3" Class="mb-4 stats-title">Tesla Cam Statistics</MudText>
 
     @if (_isLoading)
     {
@@ -70,7 +70,7 @@
         <MudGrid Spacing="3" Class="mb-4">
             <!-- Events by Type -->
             <MudItem xs="12" md="4">
-                <MudPaper Class="pa-4" Elevation="3" Style="height: 100%; min-height: 200px;">
+                <MudPaper Class="pa-4 stats-chart-panel" Elevation="3">
                     <MudText Typo="Typo.h6" Class="mb-3">Events by Type</MudText>
                     @if (_eventsByType.Any())
                     {
@@ -97,7 +97,7 @@
 
             <!-- Events Over Time -->
             <MudItem xs="12" md="4">
-                <MudPaper Class="pa-4" Elevation="3" Style="height: 100%; min-height: 200px;">
+                <MudPaper Class="pa-4 stats-chart-panel" Elevation="3">
                     <MudText Typo="Typo.h6" Class="mb-3">Events Over Time (Last 30 Days)</MudText>
                     @if (_eventsByDay.Any())
                     {
@@ -117,7 +117,7 @@
 
             <!-- Top Locations -->
             <MudItem xs="12" md="4">
-                <MudPaper Class="pa-4" Elevation="3" Style="height: 100%; min-height: 400px; overflow-y: auto;">
+                <MudPaper Class="pa-4 stats-chart-panel" Elevation="3" Style="overflow-y: auto;">
                     <MudText Typo="Typo.h6" Class="mb-3">Top 10 Locations</MudText>
                     @if (_topLocations.Any())
                     {
@@ -176,7 +176,7 @@
             <MudItem xs="12">
                 <MudPaper Class="pa-4" Elevation="4">
                     <MudText Typo="Typo.h6" Class="mb-3">Location Heatmap</MudText>
-                    <div id="teslaMap" style="height: 70vh; width: 100%; border-radius: 12px;"></div>
+                    <div id="teslaMap" class="stats-heatmap"></div>
                 </MudPaper>
             </MudItem>
         </MudGrid>
@@ -184,7 +184,23 @@
 </MudContainer>
 
 <style>
+    .stats-chart-panel {
+        height: 100%;
+        min-height: 200px;
+    }
+
+    .stats-heatmap {
+        height: 70vh;
+        width: 100%;
+        border-radius: 12px;
+    }
+
     @@media (max-width: 600px) {
+        .stats-title {
+            font-size: 1.5rem !important;
+            margin-bottom: 8px !important;
+        }
+
         .stats-card-content {
             padding: 12px;
         }
@@ -199,6 +215,15 @@
 
         .stats-card-content .mud-icon-root {
             font-size: 1.75rem;
+        }
+
+        .stats-chart-panel {
+            min-height: unset;
+            padding: 12px !important;
+        }
+
+        .stats-heatmap {
+            height: 40vh;
         }
     }
 </style>
