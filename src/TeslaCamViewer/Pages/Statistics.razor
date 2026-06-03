@@ -103,7 +103,7 @@
                     {
                         <MudChart ChartType="ChartType.Line"
                                   ChartSeries="@_eventsOverTimeSeries"
-                                  XAxisLabels="@_eventsOverTimeLabels.ToArray()"
+                                  xAxisLabels="@_eventsOverTimeLabels.ToArray()"
                                   Width="100%"
                                   Height="200px">
                         </MudChart>
@@ -250,7 +250,7 @@
 
     // Events over time
     private List<DayGroup> _eventsByDay = new();
-    private List<ChartSeries> _eventsOverTimeSeries = new();
+    private List<ChartSeries<double>> _eventsOverTimeSeries = new();
     private List<string> _eventsOverTimeLabels = new();
 
     protected override async Task OnInitializedAsync()
@@ -309,9 +309,9 @@
 
         // Prepare chart data
         _eventsOverTimeLabels = _eventsByDay.Select(x => x.Date.ToString("MM/dd")).ToList();
-        _eventsOverTimeSeries = new List<ChartSeries>
+        _eventsOverTimeSeries = new List<ChartSeries<double>>
         {
-            new ChartSeries { Name = "Events", Data = _eventsByDay.Select(x => (double)x.Count).ToArray() }
+            new ChartSeries<double> { Name = "Events", Data = _eventsByDay.Select(x => (double)x.Count).ToArray() }
         };
 
         _isLoading = false;

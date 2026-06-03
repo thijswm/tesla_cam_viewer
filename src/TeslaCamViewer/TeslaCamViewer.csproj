@@ -13,7 +13,6 @@
     <PackageReference Include="Minio" Version="7.0.0" />
     <PackageReference Include="Npgsql" Version="10.0.3" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.2" />
-    <PackageReference Include="SixLabors.ImageSharp.Drawing" Version="3.0.0" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="10.2.1" />
     <PackageReference Include="MudBlazor" Version="9.5.0" />
     <PackageReference Include="MudBlazor.ThemeManager" Version="4.0.0" />
@@ -21,6 +20,5 @@
     <PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
     <PackageReference Include="Serilog.Settings.Configuration" Version="10.0.0" />
     <PackageReference Include="FFMpegCore" Version="5.4.0" />
-    <PackageReference Include="SixLabors.ImageSharp" Version="4.0.0" />
   </ItemGroup>
 </Project>
