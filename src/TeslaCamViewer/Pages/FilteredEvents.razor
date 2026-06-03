@@ -22,7 +22,9 @@
                 <MudPaper Class="pa-3 event-list-panel" Elevation="3">
                     <MudStack Spacing="2">
                         <!-- Filter Controls -->
-                        <MudText Typo="Typo.h6" Align="Align.Center">Filter Events</MudText>
+                        <MudHidden Breakpoint="Breakpoint.SmAndDown" Invert="false">
+                            <MudText Typo="Typo.h6" Align="Align.Center">Filter Events</MudText>
+                        </MudHidden>
                         
                         <MudHidden Breakpoint="Breakpoint.SmAndDown" Invert="false">
                             <MudSelect T="string" 
@@ -265,7 +267,7 @@
                                                     }
                                     
                                                     <!-- Time markers -->
-                                                    <div style="display: flex; justify-content: space-between; margin-top: 2px; padding: 0 6px;">
+                                                    <div class="timeline-markers" style="display: flex; justify-content: space-between; margin-top: 2px; padding: 0 6px;">
                                                         @for (int i = 0; i <= GetTimeMarkerCount(); i++)
                                                         {
                                                             var markerTime = (videoDuration / GetTimeMarkerCount()) * i;
@@ -280,6 +282,31 @@
                                     </MudItem>
                                 }
                             </MudGrid>
+
+                            <!-- Event Navigation (mobile) -->
+                            <MudHidden Breakpoint="Breakpoint.SmAndDown" Invert="true">
+                                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                                    <MudButton OnClick="NavigateToPreviousEvent"
+                                               Disabled="@(!HasPreviousEvent())"
+                                               Variant="Variant.Outlined"
+                                               Color="Color.Primary"
+                                               Size="Size.Small"
+                                               StartIcon="@Icons.Material.Filled.NavigateBefore">
+                                        Prev
+                                    </MudButton>
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                        @(_filteredEvents.FindIndex(e => e.Event.Id == _selectedEvent!.Event.Id) + 1) / @_filteredEvents.Count
+                                    </MudText>
+                                    <MudButton OnClick="NavigateToNextEvent"
+                                               Disabled="@(!HasNextEvent())"
+                                               Variant="Variant.Outlined"
+                                               Color="Color.Primary"
+                                               Size="Size.Small"
+                                               EndIcon="@Icons.Material.Filled.NavigateNext">
+                                        Next
+                                    </MudButton>
+                                </MudStack>
+                            </MudHidden>
 
                             <!-- Row 2: Camera Videos -->
                             @if (cameras != null && cameras.Count > 0)
@@ -304,7 +331,7 @@
                                                                            Size="Size.Small"
                                                                            StartIcon="@Icons.Material.Filled.Download"
                                                                            download="@GetDownloadFileName("front")">
-                                                                    Download
+                                                                    <MudHidden Breakpoint="Breakpoint.SmAndDown" Invert="false"><span>Download</span></MudHidden>
                                                                 </MudButton>
                                                             </MudStack>
                                                             <video id="video-front"
@@ -335,7 +362,7 @@
                                                                            Size="Size.Small"
                                                                            StartIcon="@Icons.Material.Filled.Download"
                                                                            download="@GetDownloadFileName("back")">
-                                                                    Download
+                                                                    <MudHidden Breakpoint="Breakpoint.SmAndDown" Invert="false"><span>Download</span></MudHidden>
                                                                 </MudButton>
                                                             </MudStack>
                                                             <video id="video-back"
@@ -370,7 +397,7 @@
                                                                            Size="Size.Small"
                                                                            StartIcon="@Icons.Material.Filled.Download"
                                                                            download="@GetDownloadFileName("left_repeater")">
-                                                                    Download
+                                                                    <MudHidden Breakpoint="Breakpoint.SmAndDown" Invert="false"><span>Download</span></MudHidden>
                                                                 </MudButton>
                                                             </MudStack>
                                                             <video id="video-left_repeater"
@@ -401,7 +428,7 @@
                                                                            Size="Size.Small"
                                                                            StartIcon="@Icons.Material.Filled.Download"
                                                                            download="@GetDownloadFileName("right_repeater")">
-                                                                    Download
+                                                                    <MudHidden Breakpoint="Breakpoint.SmAndDown" Invert="false"><span>Download</span></MudHidden>
                                                                 </MudButton>
                                                             </MudStack>
                                                             <video id="video-right_repeater"
