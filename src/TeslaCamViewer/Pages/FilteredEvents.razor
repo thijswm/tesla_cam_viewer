@@ -19,25 +19,27 @@
         <MudGrid Spacing="2">
             <!-- Left Column: Event List with Filters -->
             <MudItem xs="12" md="4" lg="3">
-                <MudPaper Class="pa-3" Elevation="3" Style="position: sticky; top: 10px; max-height: calc(100vh - 100px); overflow-y: auto;">
+                <MudPaper Class="pa-3 event-list-panel" Elevation="3">
                     <MudStack Spacing="2">
                         <!-- Filter Controls -->
                         <MudText Typo="Typo.h6" Align="Align.Center">Filter Events</MudText>
                         
-                        <MudSelect T="string" 
-                                   Label="City" 
-                                   Value="@filterCity" 
-                                   ValueChanged="OnCityFilterChanged"
-                                   Clearable="true"
-                                   AdornmentIcon="@Icons.Material.Filled.LocationCity"
-                                   AdornmentColor="Color.Primary"
-                                   Variant="Variant.Outlined"
-                                   Margin="Margin.Dense">
-                            @foreach (var city in _availableCities)
-                            {
-                                <MudSelectItem Value="@city">@city</MudSelectItem>
-                            }
-                        </MudSelect>
+                        <MudHidden Breakpoint="Breakpoint.SmAndDown" Invert="false">
+                            <MudSelect T="string" 
+                                       Label="City" 
+                                       Value="@filterCity" 
+                                       ValueChanged="OnCityFilterChanged"
+                                       Clearable="true"
+                                       AdornmentIcon="@Icons.Material.Filled.LocationCity"
+                                       AdornmentColor="Color.Primary"
+                                       Variant="Variant.Outlined"
+                                       Margin="Margin.Dense">
+                                @foreach (var city in _availableCities)
+                                {
+                                    <MudSelectItem Value="@city">@city</MudSelectItem>
+                                }
+                            </MudSelect>
+                        </MudHidden>
 
                         <MudDatePicker Label="Date" 
                                        Date="@filterDate"
@@ -50,20 +52,22 @@
                                        IsDateDisabledFunc="IsNotEventDate"
                                        AdditionalDateClassesFunc="GetDateStyle" />
 
-                        <MudSelect T="string" 
-                                   Label="Source" 
-                                   Value="@filterSource" 
-                                   ValueChanged="OnSourceFilterChanged"
-                                   Clearable="true"
-                                   AdornmentIcon="@Icons.Material.Filled.Source"
-                                   AdornmentColor="Color.Primary"
-                                   Variant="Variant.Outlined"
-                                   Margin="Margin.Dense">
-                            @foreach (var source in _availableSources)
-                            {
-                                <MudSelectItem Value="@source">@source</MudSelectItem>
-                            }
-                        </MudSelect>
+                        <MudHidden Breakpoint="Breakpoint.SmAndDown" Invert="false">
+                            <MudSelect T="string" 
+                                       Label="Source" 
+                                       Value="@filterSource" 
+                                       ValueChanged="OnSourceFilterChanged"
+                                       Clearable="true"
+                                       AdornmentIcon="@Icons.Material.Filled.Source"
+                                       AdornmentColor="Color.Primary"
+                                       Variant="Variant.Outlined"
+                                       Margin="Margin.Dense">
+                                @foreach (var source in _availableSources)
+                                {
+                                    <MudSelectItem Value="@source">@source</MudSelectItem>
+                                }
+                            </MudSelect>
+                        </MudHidden>
                         
                         @if (!string.IsNullOrEmpty(filterCity) || filterDate.HasValue || !string.IsNullOrEmpty(filterSource))
                         {
@@ -165,26 +169,43 @@
                                 <!-- Left: Event Location Map -->
                                 @if (!string.IsNullOrEmpty(_selectedEvent?.Event?.Lat) && !string.IsNullOrEmpty(_selectedEvent?.Event?.Long))
                                 {
-                                    <MudItem xs="12" md="6" lg="4">
-                                        <MudPaper Class="pa-2 event-map" Elevation="3">
-                                            <MudStack Spacing="1">
-                                                <MudText Typo="Typo.subtitle2" Align="Align.Center">Event Location</MudText>
-                                                <div id="event-map" class="event-map-canvas" style="height: 280px; width: 100%; border-radius: 6px;"></div>
-                                                @if (!string.IsNullOrEmpty(_selectedEvent?.Event?.City))
-                                                {
-                                                    <MudText Typo="Typo.caption" Align="Align.Center" Color="Color.Secondary">
-                                                        @_selectedEvent.Event.City
+                                    <!-- Mobile: show address only -->
+                                    <MudHidden Breakpoint="Breakpoint.SmAndDown" Invert="true">
+                                        <MudItem xs="12">
+                                            <MudPaper Class="pa-2" Elevation="3">
+                                                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Justify="Justify.Center">
+                                                    <MudIcon Icon="@Icons.Material.Filled.LocationOn" Size="Size.Small" Color="Color.Primary" />
+                                                    <MudText Typo="Typo.body2">
+                                                        @(_selectedEvent?.Event?.Street)@(!string.IsNullOrEmpty(_selectedEvent?.Event?.Street) && !string.IsNullOrEmpty(_selectedEvent?.Event?.City) ? ", " : "")@(_selectedEvent?.Event?.City)
                                                     </MudText>
-                                                }
-                                                @if (!string.IsNullOrEmpty(_selectedEvent?.Event?.Street))
-                                                {
-                                                    <MudText Typo="Typo.caption" Align="Align.Center" Color="Color.Secondary">
-                                                        @_selectedEvent.Event.Street
-                                                    </MudText>
-                                                }
-                                            </MudStack>
-                                        </MudPaper>
-                                    </MudItem>
+                                                </MudStack>
+                                            </MudPaper>
+                                        </MudItem>
+                                    </MudHidden>
+
+                                    <!-- Desktop: show full map -->
+                                    <MudHidden Breakpoint="Breakpoint.SmAndDown" Invert="false">
+                                        <MudItem xs="12" md="6" lg="4">
+                                            <MudPaper Class="pa-2 event-map" Elevation="3">
+                                                <MudStack Spacing="1">
+                                                    <MudText Typo="Typo.subtitle2" Align="Align.Center">Event Location</MudText>
+                                                    <div id="event-map" class="event-map-canvas" style="height: 280px; width: 100%; border-radius: 6px;"></div>
+                                                    @if (!string.IsNullOrEmpty(_selectedEvent?.Event?.City))
+                                                    {
+                                                        <MudText Typo="Typo.caption" Align="Align.Center" Color="Color.Secondary">
+                                                            @_selectedEvent.Event.City
+                                                        </MudText>
+                                                    }
+                                                    @if (!string.IsNullOrEmpty(_selectedEvent?.Event?.Street))
+                                                    {
+                                                        <MudText Typo="Typo.caption" Align="Align.Center" Color="Color.Secondary">
+                                                            @_selectedEvent.Event.Street
+                                                        </MudText>
+                                                    }
+                                                </MudStack>
+                                            </MudPaper>
+                                        </MudItem>
+                                    </MudHidden>
                                 }
 
                                 <!-- Right: Timeline -->
@@ -414,12 +435,14 @@
                 }
                 else
                 {
-                    <MudPaper Class="pa-8" Elevation="3">
-                        <MudStack AlignItems="AlignItems.Center" Spacing="2">
-                            <MudIcon Icon="@Icons.Material.Filled.TouchApp" Size="Size.Large" Color="Color.Secondary" />
-                            <MudText Typo="Typo.h6" Color="Color.Secondary">Select an event to view cameras</MudText>
-                        </MudStack>
-                    </MudPaper>
+                    <MudHidden Breakpoint="Breakpoint.SmAndDown" Invert="false">
+                        <MudPaper Class="pa-8" Elevation="3">
+                            <MudStack AlignItems="AlignItems.Center" Spacing="2">
+                                <MudIcon Icon="@Icons.Material.Filled.TouchApp" Size="Size.Large" Color="Color.Secondary" />
+                                <MudText Typo="Typo.h6" Color="Color.Secondary">Select an event to view cameras</MudText>
+                            </MudStack>
+                        </MudPaper>
+                    </MudHidden>
                 }
             </MudItem>
         </MudGrid>
