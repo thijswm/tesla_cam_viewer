@@ -334,12 +334,16 @@
                                                                     <MudHidden Breakpoint="Breakpoint.SmAndDown" Invert="false"><span>Download</span></MudHidden>
                                                                 </MudButton>
                                                             </MudStack>
-                                                            <video id="video-front"
+                                                            <video @key="@($"front-{frontCamera.Id}")"
+                                                                   id="video-front"
+                                                                   src="@GetVideoUrl(frontCamera)"
                                                                    controls
+                                                                   playsinline
+                                                                   preload="metadata"
                                                                    class="camera-video"
                                                                    style="width: 100%; border-radius: 6px; background: #000;"
-                                                                   data-camera="front">
-                                                                <source src="@GetVideoUrl(frontCamera)" type="video/mp4">
+                                                                   data-camera="front"
+                                                                   data-offset="@GetCameraOffsetSeconds(frontCamera)">
                                                                 Your browser does not support the video tag.
                                                             </video>
                                                         </MudStack>
@@ -365,12 +369,16 @@
                                                                     <MudHidden Breakpoint="Breakpoint.SmAndDown" Invert="false"><span>Download</span></MudHidden>
                                                                 </MudButton>
                                                             </MudStack>
-                                                            <video id="video-back"
+                                                            <video @key="@($"back-{backCamera.Id}")"
+                                                                   id="video-back"
+                                                                   src="@GetVideoUrl(backCamera)"
                                                                    controls
+                                                                   playsinline
+                                                                   preload="metadata"
                                                                    class="camera-video"
                                                                    style="width: 100%; border-radius: 6px; background: #000;"
-                                                                   data-camera="back">
-                                                                <source src="@GetVideoUrl(backCamera)" type="video/mp4">
+                                                                   data-camera="back"
+                                                                   data-offset="@GetCameraOffsetSeconds(backCamera)">
                                                                 Your browser does not support the video tag.
                                                             </video>
                                                         </MudStack>
@@ -400,12 +408,16 @@
                                                                     <MudHidden Breakpoint="Breakpoint.SmAndDown" Invert="false"><span>Download</span></MudHidden>
                                                                 </MudButton>
                                                             </MudStack>
-                                                            <video id="video-left_repeater"
+                                                            <video @key="@($"left-{leftCamera.Id}")"
+                                                                   id="video-left_repeater"
+                                                                   src="@GetVideoUrl(leftCamera)"
                                                                    controls
+                                                                   playsinline
+                                                                   preload="metadata"
                                                                    class="camera-video"
                                                                    style="width: 100%; border-radius: 6px; background: #000;"
-                                                                   data-camera="left_repeater">
-                                                                <source src="@GetVideoUrl(leftCamera)" type="video/mp4">
+                                                                   data-camera="left_repeater"
+                                                                   data-offset="@GetCameraOffsetSeconds(leftCamera)">
                                                                 Your browser does not support the video tag.
                                                             </video>
                                                         </MudStack>
@@ -431,12 +443,16 @@
                                                                     <MudHidden Breakpoint="Breakpoint.SmAndDown" Invert="false"><span>Download</span></MudHidden>
                                                                 </MudButton>
                                                             </MudStack>
-                                                            <video id="video-right_repeater"
+                                                            <video @key="@($"right-{rightCamera.Id}")"
+                                                                   id="video-right_repeater"
+                                                                   src="@GetVideoUrl(rightCamera)"
                                                                    controls
+                                                                   playsinline
+                                                                   preload="metadata"
                                                                    class="camera-video"
                                                                    style="width: 100%; border-radius: 6px; background: #000;"
-                                                                   data-camera="right_repeater">
-                                                                <source src="@GetVideoUrl(rightCamera)" type="video/mp4">
+                                                                   data-camera="right_repeater"
+                                                                   data-offset="@GetCameraOffsetSeconds(rightCamera)">
                                                                 Your browser does not support the video tag.
                                                             </video>
                                                         </MudStack>

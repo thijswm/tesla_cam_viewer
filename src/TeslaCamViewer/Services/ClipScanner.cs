@@ -274,34 +274,24 @@ public class ClipScanner : BackgroundService
 
             if (mp4Files.Count == 1)
             {
-                // Single file - upload directly
-                fileToUpload = mp4Files[0];
+                await RemuxWithFastStart(mp4Files[0], tempOutput, ct);
+                fileToUpload = tempOutput;
                 timestamp = GetTimestampFromName(Path.GetFileName(mp4Files[0])) ?? DateTime.UtcNow;
-
-                // Get video duration
-                var mediaInfo = await FFProbe.AnalyseAsync(fileToUpload, cancellationToken: ct);
-                duration = mediaInfo.Duration;
-                fileSize = new FileInfo(fileToUpload).Length;
-
-                _logger.LogInformation("Single video for camera {CameraName}: {Size} bytes, duration: {Duration}",
-                    cameraName, fileSize, duration);
             }
             else
             {
-                // Multiple files - stitch them together
                 await StitchVideos(mp4Files, tempOutput, ct);
-
                 fileToUpload = tempOutput;
                 timestamp = GetTimestampFromName(Path.GetFileName(mp4Files[0])) ?? DateTime.UtcNow;
-
-                // Get duration of stitched video
-                var mediaInfo = await FFProbe.AnalyseAsync(fileToUpload, cancellationToken: ct);
-                duration = mediaInfo.Duration;
-                fileSize = new FileInfo(fileToUpload).Length;
-
-                _logger.LogInformation("Stitched {Count} videos for camera {CameraName}: {Size} bytes, duration: {Duration}",
-                    mp4Files.Count, cameraName, fileSize, duration);
             }
+
+            var mediaInfo = await FFProbe.AnalyseAsync(fileToUpload, cancellationToken: ct);
+            duration = mediaInfo.Duration;
+            fileSize = new FileInfo(fileToUpload).Length;
+
+            _logger.LogInformation(
+                "Prepared {Count} video(s) for camera {CameraName}: {Size} bytes, duration: {Duration}",
+                mp4Files.Count, cameraName, fileSize, duration);
 
             // Upload to MinIO (this can take time, but DB connection is not held)
             var minioPath = $"events/{evt.FolderName}/{cameraName}.mp4";
@@ -323,8 +313,7 @@ public class ClipScanner : BackgroundService
         }
         finally
         {
-            // Clean up temp file if it was created
-            if (mp4Files.Count > 1 && File.Exists(tempOutput))
+            if (File.Exists(tempOutput))
             {
                 try
                 {
@@ -375,15 +364,14 @@ public class ClipScanner : BackgroundService
 
             _logger.LogDebug("Created concat file: {ConcatFile}", concatFile);
 
-            // Use FFmpeg to concatenate videos
-            var ffmpegArgs = $"-f concat -safe 0 -i \"{concatFile}\" -c copy \"{outputFile}\"";
-
             await FFMpegArguments
                 .FromFileInput(concatFile, false, options => options
                     .WithCustomArgument("-f concat")
                     .WithCustomArgument("-safe 0"))
                 .OutputToFile(outputFile, true, options => options
-                    .CopyChannel())
+                    .CopyChannel()
+                    .WithCustomArgument("-movflags +faststart"))
+                .CancellableThrough(ct)
                 .ProcessAsynchronously();
 
             _logger.LogDebug("FFmpeg concatenation completed: {OutputFile}", outputFile);
@@ -403,6 +391,19 @@ public class ClipScanner : BackgroundService
                 }
             }
         }
+    }
+
+    private async Task RemuxWithFastStart(string inputFile, string outputFile, CancellationToken ct)
+    {
+        await FFMpegArguments
+            .FromFileInput(inputFile)
+            .OutputToFile(outputFile, true, options => options
+                .CopyChannel()
+                .WithCustomArgument("-movflags +faststart"))
+            .CancellableThrough(ct)
+            .ProcessAsynchronously();
+
+        _logger.LogDebug("Remuxed {Input} with faststart to {Output}", inputFile, outputFile);
     }
 
     private static string GetCameraFromName(string fileName)

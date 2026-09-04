@@ -3,6 +3,7 @@ using Microsoft.JSInterop;
 using Microsoft.EntityFrameworkCore;
 using TeslaCamViewer.Data;
 using TeslaCamViewer.Shared;
+using System.Globalization;
 using System.Timers;
 
 namespace TeslaCamViewer.Pages;
@@ -183,7 +184,7 @@ public partial class FilteredEvents : IDisposable
         // Pause all videos from previous event
         try
         {
-            await JS.InvokeVoidAsync("eval", "document.querySelectorAll('video').forEach(v => { v.pause(); v.currentTime = 0; })");
+            await JS.InvokeVoidAsync("teslaCamPlayer.reset");
         }
         catch
         {
@@ -208,7 +209,7 @@ public partial class FilteredEvents : IDisposable
         // Force video elements to load
         try
         {
-            await JS.InvokeVoidAsync("eval", "document.querySelectorAll('.camera-video').forEach(v => { v.load(); })");
+            await JS.InvokeVoidAsync("teslaCamPlayer.reload");
         }
         catch (Exception ex)
         {
@@ -277,6 +278,17 @@ public partial class FilteredEvents : IDisposable
                name.Equals(cameraName, StringComparison.OrdinalIgnoreCase);
     }
 
+    private string GetCameraOffsetSeconds(CameraMetadata camera)
+    {
+        if (!minTimestamp.HasValue)
+        {
+            return "0";
+        }
+
+        var offset = Math.Max(0, (camera.Timestamp - minTimestamp.Value).TotalSeconds);
+        return offset.ToString("0.###", CultureInfo.InvariantCulture);
+    }
+
     private string GetVideoUrl(CameraMetadata camera)
     {
         return $"/api/camera/{camera.Id}";
@@ -329,15 +341,21 @@ public partial class FilteredEvents : IDisposable
     private async Task TogglePlayPause()
     {
         isPlaying = !isPlaying;
-        var action = isPlaying ? "play" : "pause";
-        await JS.InvokeVoidAsync("eval", $"document.querySelectorAll('.camera-video').forEach(v => v.{action}())");
+        if (isPlaying)
+        {
+            await JS.InvokeVoidAsync("teslaCamPlayer.play");
+        }
+        else
+        {
+            await JS.InvokeVoidAsync("teslaCamPlayer.pause");
+        }
         StateHasChanged();
     }
 
     private async Task OnTimelineChanged(double newTime)
     {
         currentTime = newTime;
-        await JS.InvokeVoidAsync("eval", $"document.querySelectorAll('.camera-video').forEach(v => v.currentTime = {newTime})");
+        await JS.InvokeVoidAsync("teslaCamPlayer.seek", newTime);
     }
 
     private async Task SkipBackward()
@@ -356,8 +374,18 @@ public partial class FilteredEvents : IDisposable
     {
         if (updateTimer != null) return;
 
-        updateTimer = new System.Timers.Timer(100); // Update every 100ms
-        updateTimer.Elapsed += async (sender, e) => await UpdateTimelinePosition();
+        updateTimer = new System.Timers.Timer(100);
+        updateTimer.Elapsed += async (_, _) =>
+        {
+            try
+            {
+                await InvokeAsync(UpdateTimelinePosition);
+            }
+            catch
+            {
+                // Circuit may already be disposed.
+            }
+        };
         updateTimer.AutoReset = true;
         updateTimer.Start();
     }
@@ -378,11 +406,11 @@ public partial class FilteredEvents : IDisposable
 
         try
         {
-            var time = await JS.InvokeAsync<double>("eval", "document.querySelector('.camera-video')?.currentTime || 0");
+            var time = await JS.InvokeAsync<double>("teslaCamPlayer.getTimelineTime");
             if (Math.Abs(time - currentTime) > 0.5)
             {
                 currentTime = time;
-                await InvokeAsync(StateHasChanged);
+                StateHasChanged();
             }
         }
         catch
