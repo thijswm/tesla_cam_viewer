@@ -4,11 +4,10 @@ using Microsoft.EntityFrameworkCore;
 using TeslaCamViewer.Data;
 using TeslaCamViewer.Shared;
 using System.Globalization;
-using System.Timers;
 
 namespace TeslaCamViewer.Pages;
 
-public partial class FilteredEvents : IDisposable
+public partial class FilteredEvents : IAsyncDisposable
 {
     [Inject] public IDbContextFactory<AppDbContext>? DbFactory { get; set; }
     [Inject] public ILogger<FilteredEvents> Logger { get; set; } = default!;
@@ -42,7 +41,7 @@ public partial class FilteredEvents : IDisposable
     private double currentTime = 0;
     private double videoDuration = 60; // Default 60 seconds, will be updated from video
     private DateTime? minTimestamp = null; // Earliest camera timestamp (reference point for time 0)
-    private System.Timers.Timer? updateTimer;
+    private DotNetObjectReference<FilteredEvents>? _jsRef;
 
     // Lightweight camera metadata without video data
     private class CameraMetadata
@@ -185,8 +184,7 @@ public partial class FilteredEvents : IDisposable
 
     private async Task OnClipClicked(ClipItem clipItem)
     {
-        // Stop timer immediately when switching events
-        StopTimelineUpdater();
+        await StopTimelineUpdater();
 
         _selectedEvent = clipItem;
 
@@ -197,15 +195,7 @@ public partial class FilteredEvents : IDisposable
         isLoadingCameras = true;
         StateHasChanged();
 
-        // Pause all videos from previous event
-        try
-        {
-            await JS.InvokeVoidAsync("teslaCamPlayer.reset");
-        }
-        catch
-        {
-            // Ignore errors if no videos exist yet
-        }
+        await PlayerInvokeVoid("reset");
 
         // Load camera metadata
         await LoadCameraMetadata();
@@ -213,24 +203,12 @@ public partial class FilteredEvents : IDisposable
         isLoadingCameras = false;
         StateHasChanged();
 
-        // Give the DOM time to render the video elements
         await Task.Delay(100);
 
-        // Start timeline update timer for new event
-        StartTimelineUpdater();
-
-        // Initialize map with event location
         await InitializeEventMap();
 
-        // Force video elements to load
-        try
-        {
-            await JS.InvokeVoidAsync("teslaCamPlayer.reload");
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Failed to load video elements");
-        }
+        await PlayerInvokeVoid("reload");
+        await StartTimelineUpdater();
     }
 
     private async Task LoadCameraMetadata()
@@ -357,21 +335,14 @@ public partial class FilteredEvents : IDisposable
     private async Task TogglePlayPause()
     {
         isPlaying = !isPlaying;
-        if (isPlaying)
-        {
-            await JS.InvokeVoidAsync("teslaCamPlayer.play");
-        }
-        else
-        {
-            await JS.InvokeVoidAsync("teslaCamPlayer.pause");
-        }
+        await PlayerInvokeVoid(isPlaying ? "play" : "pause");
         StateHasChanged();
     }
 
     private async Task OnTimelineChanged(double newTime)
     {
         currentTime = newTime;
-        await JS.InvokeVoidAsync("teslaCamPlayer.seek", newTime);
+        await PlayerInvokeVoid("seek", newTime);
     }
 
     private async Task SkipBackward()
@@ -386,52 +357,45 @@ public partial class FilteredEvents : IDisposable
         await OnTimelineChanged(newTime);
     }
 
-    private void StartTimelineUpdater()
+    private async Task StartTimelineUpdater()
     {
-        if (updateTimer != null) return;
-
-        updateTimer = new System.Timers.Timer(100);
-        updateTimer.Elapsed += async (_, _) =>
-        {
-            try
-            {
-                await InvokeAsync(UpdateTimelinePosition);
-            }
-            catch
-            {
-                // Circuit may already be disposed.
-            }
-        };
-        updateTimer.AutoReset = true;
-        updateTimer.Start();
+        _jsRef ??= DotNetObjectReference.Create(this);
+        await PlayerInvokeVoid("startTimeline", _jsRef, 250);
     }
 
-    private void StopTimelineUpdater()
+    private async Task StopTimelineUpdater()
     {
-        if (updateTimer != null)
+        await PlayerInvokeVoid("stopTimeline");
+    }
+
+    [JSInvokable]
+    public Task OnTimelineTick(double time)
+    {
+        if (!isPlaying || Math.Abs(time - currentTime) <= 0.5)
         {
-            updateTimer.Stop();
-            updateTimer.Dispose();
-            updateTimer = null;
+            return Task.CompletedTask;
         }
+
+        currentTime = time;
+        StateHasChanged();
+        return Task.CompletedTask;
     }
 
-    private async Task UpdateTimelinePosition()
+    private async Task PlayerInvokeVoid(string method, params object?[] args)
     {
-        if (!isPlaying) return;
-
         try
         {
-            var time = await JS.InvokeAsync<double>("teslaCamPlayer.getTimelineTime");
-            if (Math.Abs(time - currentTime) > 0.5)
-            {
-                currentTime = time;
-                StateHasChanged();
-            }
+            await JS.InvokeVoidAsync($"teslaCamPlayer.{method}", args);
         }
-        catch
+        catch (JSDisconnectedException)
         {
-            // Ignore errors during timeline updates
+        }
+        catch (TaskCanceledException)
+        {
+        }
+        catch (JSException ex)
+        {
+            Logger.LogDebug(ex, "teslaCamPlayer.{Method} failed", method);
         }
     }
 
@@ -546,9 +510,22 @@ public partial class FilteredEvents : IDisposable
         Navigation.NavigateTo($"/events{queryString}");
     }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
-        StopTimelineUpdater();
+        await StopTimelineUpdater();
+        try
+        {
+            await JS.InvokeVoidAsync("teslaCamPlayer.dispose");
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+        catch (TaskCanceledException)
+        {
+        }
+
+        _jsRef?.Dispose();
+        _jsRef = null;
     }
 
     private async Task NavigateToPreviousEvent()

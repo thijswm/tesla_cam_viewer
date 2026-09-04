@@ -65,5 +65,35 @@ window.teslaCamPlayer = (function () {
         return latest;
     }
 
-    return { seek, play, pause, reset, reload, getTimelineTime };
+    let timelineTimer = null;
+    let timelineRef = null;
+    let timelineBusy = false;
+
+    function startTimeline(dotNetRef, intervalMs) {
+        stopTimeline();
+        timelineRef = dotNetRef;
+        const ms = Number(intervalMs) > 0 ? Number(intervalMs) : 250;
+        timelineTimer = setInterval(() => {
+            if (timelineBusy || !timelineRef) return;
+            timelineBusy = true;
+            timelineRef.invokeMethodAsync("OnTimelineTick", getTimelineTime())
+                .catch(() => { })
+                .finally(() => { timelineBusy = false; });
+        }, ms);
+    }
+
+    function stopTimeline() {
+        if (timelineTimer) {
+            clearInterval(timelineTimer);
+            timelineTimer = null;
+        }
+        timelineBusy = false;
+    }
+
+    function dispose() {
+        stopTimeline();
+        timelineRef = null;
+    }
+
+    return { seek, play, pause, reset, reload, getTimelineTime, startTimeline, stopTimeline, dispose };
 })();
