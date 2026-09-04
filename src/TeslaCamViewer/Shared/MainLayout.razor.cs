@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Components;
 using Microsoft.EntityFrameworkCore;
 using TeslaCamViewer.Data;
+using TeslaCamViewer;
 
 namespace TeslaCamViewer.Shared
 {
@@ -8,6 +9,7 @@ namespace TeslaCamViewer.Shared
     {
         [Inject] IDbContextFactory<AppDbContext>? DbFactory { get; set; }
 
+        private readonly string _appVersion = AppVersion.Current;
         private int _totalEvents = 0;
         private int _eventsThisMonth = 0;
         private int _sentryEvents = 0;

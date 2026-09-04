@@ -1,9 +1,13 @@
 # Build stage
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
+ARG APP_VERSION=0.0.0
+ARG APP_INFORMATIONAL_VERSION=dev
 COPY . .
 RUN dotnet restore
-RUN dotnet publish -c Release -o /app
+RUN dotnet publish -c Release -o /app \
+    -p:Version=${APP_VERSION} \
+    -p:InformationalVersion=${APP_INFORMATIONAL_VERSION}
 
 # Runtime stage
 FROM mcr.microsoft.com/dotnet/aspnet:10.0

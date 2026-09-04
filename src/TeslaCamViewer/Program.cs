@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using TeslaCamViewer;
 using TeslaCamViewer.Data;
 using TeslaCamViewer.Services;
 using MudBlazor.Services;
@@ -24,7 +25,7 @@ Log.Logger = new LoggerConfiguration()
 
 builder.Host.UseSerilog(Log.Logger);
 
-Log.Information("Starting TeslaCamViewer");
+Log.Information("Starting TeslaCamViewer {Version}", AppVersion.Current);
 
 // Add DbContext factory for components that need concurrent access
 builder.Services.AddDbContextFactory<AppDbContext>(options =>

@@ -12,6 +12,8 @@
                        Edge="Edge.Start"
                        OnClick="@ToggleDrawer" />
         <MudText Typo="Typo.h6">Tesla Cam Viewer</MudText>
+        <MudSpacer />
+        <MudText Typo="Typo.caption">@_appVersion</MudText>
     </MudAppBar>
 
     <MudDrawer @bind-Open="@_drawerOpen"
@@ -105,6 +107,9 @@
                     </MudPaper>
                 </MudItem>
             </MudGrid>
+            <MudText Typo="Typo.caption" Align="Align.Center" Class="pa-3" Color="Color.Secondary">
+                Version @_appVersion
+            </MudText>
         </MudDrawerContainer>
     </MudDrawer>
 
