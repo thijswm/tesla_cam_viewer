@@ -35,9 +35,9 @@
                     <a href="/events?date=@(cellDate.Value.ToString("yyyy-MM-dd"))" class="calendar-cell-container calendar-cell-clickable" style="text-decoration: none; color: inherit;">
                         <MudPaper Class="calendar-cell" Elevation="2">
                             <div class="calendar-day-number">@cellDate.Value.Day</div>
-                            @if (!string.IsNullOrEmpty(cell.Thumbnail))
+                            @if (cell.ThumbnailEventId is int thumbId)
                             {
-                                <img src="@cell.Thumbnail" class="calendar-thumb" alt="Event thumbnail" />
+                                <img src="@($"/api/thumbnail/{thumbId}")" class="calendar-thumb" alt="Event thumbnail" />
                             }
                             else
                             {

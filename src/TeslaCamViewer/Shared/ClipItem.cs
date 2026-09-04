@@ -11,20 +11,6 @@ namespace TeslaCamViewer.Shared
             Event = ev;
         }
 
-        public string? Thumbnail
-        {
-            get
-            {
-                if (Event?.Thumbnail != null)
-                {
-                    var base64 = Convert.ToBase64String(Event.Thumbnail);
-                    return $"data:image/png;base64,{base64}";
-                }
-                else
-                {
-                    return null;
-                }
-            }
-        }
+        public string ThumbnailUrl => Event is null ? string.Empty : $"/api/thumbnail/{Event.Id}";
     }
 }

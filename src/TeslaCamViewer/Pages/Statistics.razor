@@ -231,7 +231,7 @@
 @code {
     private bool _mapInitialized;
     private bool _isLoading = true;
-    private List<Event> _events = new();
+    private List<HeatmapCoord> _coords = new();
 
     // Summary stats
     private int _totalEvents;
@@ -264,28 +264,35 @@
         StateHasChanged();
 
         await using var db = await DbFactory.CreateDbContextAsync();
-        _events = await db.Events.ToListAsync();
+        var events = await db.Events.AsNoTracking()
+            .Select(e => new
+            {
+                e.Source,
+                e.City,
+                e.Street,
+                e.Type,
+                e.TimeStamp,
+                e.Lat,
+                e.Long
+            })
+            .ToListAsync();
 
-        // Calculate summary statistics
-        _totalEvents = _events.Count;
-        _sentryEvents = _events.Count(e => e.Source == "Sentry");
-        _savedEvents = _events.Count(e => e.Source == "Saved");
+        _totalEvents = events.Count;
+        _sentryEvents = events.Count(e => e.Source == "Sentry");
+        _savedEvents = events.Count(e => e.Source == "Saved");
 
-        // Unique cities
-        _uniqueCities = _events
+        _uniqueCities = events
             .Where(e => !string.IsNullOrEmpty(e.City))
             .Select(e => e.City)
             .Distinct()
             .Count();
 
-        // Events by type
-        _eventsByType = _events
+        _eventsByType = events
             .GroupBy(e => string.IsNullOrEmpty(e.Type) ? "unknown" : e.Type)
             .Select(g => new EventTypeGroup { Type = g.Key, Count = g.Count() })
             .ToList();
 
-        // Top locations
-        _topLocations = _events
+        _topLocations = events
             .Where(e => !string.IsNullOrEmpty(e.City))
             .GroupBy(e => new { e.City, e.Street })
             .Select(g => new LocationGroup
@@ -298,13 +305,17 @@
             .Take(10)
             .ToList();
 
-        // Events over time (last 30 days)
         var thirtyDaysAgo = DateTime.UtcNow.AddDays(-30);
-        _eventsByDay = _events
+        _eventsByDay = events
             .Where(e => e.TimeStamp >= thirtyDaysAgo)
             .GroupBy(e => e.TimeStamp.Date)
             .Select(g => new DayGroup { Date = g.Key, Count = g.Count() })
             .OrderBy(x => x.Date)
+            .ToList();
+
+        _coords = events
+            .Where(e => !string.IsNullOrWhiteSpace(e.Lat) && !string.IsNullOrWhiteSpace(e.Long))
+            .Select(e => new HeatmapCoord { Lat = e.Lat, Long = e.Long })
             .ToList();
 
         // Prepare chart data
@@ -342,7 +353,7 @@
     {
         if (!_mapInitialized) return;
 
-        var points = _events
+        var points = _coords
         .Select(e =>
         {
             if (string.IsNullOrWhiteSpace(e.Lat) || string.IsNullOrWhiteSpace(e.Long))
@@ -376,6 +387,12 @@
         if (points.Length == 0) return;
 
         await JS.InvokeVoidAsync("teslaHeatmap.setHeat", (object)points);
+    }
+
+    private class HeatmapCoord
+    {
+        public string Lat { get; set; } = string.Empty;
+        public string Long { get; set; } = string.Empty;
     }
 
     // Helper classes

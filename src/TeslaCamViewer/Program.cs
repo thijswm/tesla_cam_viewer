@@ -89,10 +89,41 @@ app.MapBlazorHub();
 app.MapFallbackToPage("/_Host");
 
 app.MapGet("/api/health", () => Results.Ok("ok"));
+app.MapGet("/api/thumbnail/{eventId:int}", async (int eventId, IDbContextFactory<AppDbContext> dbFactory) =>
+{
+    await using var db = await dbFactory.CreateDbContextAsync();
+    var thumbnail = await db.Events.AsNoTracking()
+        .Where(e => e.Id == eventId)
+        .Select(e => e.Thumbnail)
+        .FirstOrDefaultAsync();
+
+    if (thumbnail is null || thumbnail.Length == 0)
+    {
+        return Results.NotFound();
+    }
+
+    return Results.File(thumbnail, "image/png");
+});
 app.MapGet("/api/events", async (IDbContextFactory<AppDbContext> dbFactory) =>
 {
     await using var db = await dbFactory.CreateDbContextAsync();
-    return await db.Events.OrderByDescending(e => e.CreatedAt).ToListAsync();
+    return await db.Events.AsNoTracking()
+        .OrderByDescending(e => e.CreatedAt)
+        .Select(e => new Event
+        {
+            Id = e.Id,
+            FolderName = e.FolderName,
+            Type = e.Type,
+            CreatedAt = e.CreatedAt,
+            Source = e.Source,
+            Lat = e.Lat,
+            Long = e.Long,
+            City = e.City,
+            Street = e.Street,
+            Camera = e.Camera,
+            TimeStamp = e.TimeStamp
+        })
+        .ToListAsync();
 });
 app.MapGet("/api/clips", async (IDbContextFactory<AppDbContext> dbFactory) =>
 {

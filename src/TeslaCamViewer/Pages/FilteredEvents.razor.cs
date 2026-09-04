@@ -88,7 +88,7 @@ public partial class FilteredEvents : IDisposable
         await using var db = await DbFactory.CreateDbContextAsync();
 
         // Build base query with current filters applied
-        var query = db.Events.AsQueryable();
+        var query = db.Events.AsNoTracking();
 
         // Load cities based on current source and date filters
         var citiesQuery = query;
@@ -142,7 +142,7 @@ public partial class FilteredEvents : IDisposable
 
         await using var db = await DbFactory.CreateDbContextAsync();
         
-        var query = db.Events.Include(e => e.Clips).AsQueryable();
+        var query = db.Events.AsNoTracking();
 
         // Apply filters
         if (!string.IsNullOrEmpty(filterCity))
@@ -163,7 +163,23 @@ public partial class FilteredEvents : IDisposable
             query = query.Where(e => e.Source == filterSource);
         }
 
-        var events = await query.OrderByDescending(e => e.TimeStamp).ToListAsync();
+        var events = await query
+            .OrderByDescending(e => e.TimeStamp)
+            .Select(e => new Event
+            {
+                Id = e.Id,
+                FolderName = e.FolderName,
+                Type = e.Type,
+                CreatedAt = e.CreatedAt,
+                Source = e.Source,
+                Lat = e.Lat,
+                Long = e.Long,
+                City = e.City,
+                Street = e.Street,
+                Camera = e.Camera,
+                TimeStamp = e.TimeStamp
+            })
+            .ToListAsync();
         _filteredEvents = events.Select(e => new ClipItem(e)).ToList();
     }
 
