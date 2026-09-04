@@ -22,8 +22,7 @@ public class ClipScanner : BackgroundService
     private static readonly HttpClient GeoHttpClient = CreateGeoHttpClient();
 
     private static readonly TimeSpan FolderQuietPeriod = TimeSpan.FromSeconds(10);
-    private static readonly TimeSpan FolderQuietPollInterval = TimeSpan.FromSeconds(1);
-    private static readonly TimeSpan FolderQuietStatusInterval = TimeSpan.FromSeconds(5);
+    private const int MinimumMp4Files = 4;
 
     public ClipScanner(ILogger<ClipScanner> logger, IServiceProvider sp, IMinioClient minio, IConfiguration config)
     {
@@ -111,8 +110,12 @@ public class ClipScanner : BackgroundService
                 var evt = await db.Events.FirstOrDefaultAsync(e => e.FolderName == folderName && e.Source == source, ct);
                 if (evt == null)
                 {
-                    _logger.LogInformation("Waiting for folder: {Folder} to be quiet", dir);
-                    await WaitForDirectoryQuiet(dir, FolderQuietPeriod, FolderQuietPollInterval, FolderQuietStatusInterval, ct);
+                    if (!TryGetDirectoryReady(dir, out var notReadyReason))
+                    {
+                        _logger.LogInformation("Skipping folder until next scan: {Folder} ({Reason})", dir, notReadyReason);
+                        continue;
+                    }
+
                     evt = await CreateEventFromFolderAsync(dir, folderName, source, ct);
                     db.Events.Add(evt);
                     eventsProcessed++;
@@ -512,72 +515,54 @@ public class ClipScanner : BackgroundService
         return new DateTime(year, month, day, hour, minute, second, DateTimeKind.Utc);
     }
 
-    private async Task WaitForDirectoryQuiet(string directory, TimeSpan quietPeriod, TimeSpan pollInterval, TimeSpan statusInterval, CancellationToken ct)
+    private bool TryGetDirectoryReady(string directory, out string notReadyReason)
     {
-        DateTime? lastChange = null;
-        DateTime? lastObserved = null;
-        var lastStatusLog = DateTime.UtcNow;
+        var eventJsonPath = Path.Combine(directory, "event.json");
+        var thumbPngPath = Path.Combine(directory, "thumb.png");
 
-        while (!ct.IsCancellationRequested)
+        int mp4Count;
+        try
         {
-            // Check if required files exist
-            var eventJsonPath = Path.Combine(directory, "event.json");
-            var thumbPngPath = Path.Combine(directory, "thumb.png");
-            var mp4Files = Directory.EnumerateFiles(directory, "*.mp4").ToList();
-
-            bool hasRequiredFiles = File.Exists(eventJsonPath)
-                && File.Exists(thumbPngPath)
-                && mp4Files.Count >= 4;
-
-            if (!hasRequiredFiles)
-            {
-                if (DateTime.UtcNow - lastStatusLog >= statusInterval)
-                {
-                    _logger.LogInformation("Waiting for required files in folder: {Folder} (event.json: {EventJson}, thumb.png: {ThumbPng}, mp4 files: {Mp4Count}/4)",
-                        directory, File.Exists(eventJsonPath), File.Exists(thumbPngPath), mp4Files.Count);
-                    lastStatusLog = DateTime.UtcNow;
-                }
-
-                await Task.Delay(pollInterval, ct);
-                continue;
-            }
-
-            DateTime? latestWrite = null;
-
-            foreach (var file in Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories))
-            {
-                var writeTime = File.GetLastWriteTimeUtc(file);
-                if (latestWrite == null || writeTime > latestWrite)
-                {
-                    latestWrite = writeTime;
-                }
-            }
-
-            if (latestWrite == null)
-            {
-                latestWrite = DateTime.UtcNow;
-            }
-
-            if (lastObserved == null || latestWrite != lastObserved)
-            {
-                lastObserved = latestWrite;
-                lastChange = DateTime.UtcNow;
-            }
-
-            if (lastChange != null && DateTime.UtcNow - lastChange >= quietPeriod)
-            {
-                _logger.LogInformation("Folder is ready: {Folder} (all required files present and quiet period met)", directory);
-                return;
-            }
-
-            if (DateTime.UtcNow - lastStatusLog >= statusInterval)
-            {
-                _logger.LogInformation("Still waiting for folder quiet: {Folder}", directory);
-                lastStatusLog = DateTime.UtcNow;
-            }
-
-            await Task.Delay(pollInterval, ct);
+            mp4Count = Directory.EnumerateFiles(directory, "*.mp4").Count();
         }
+        catch (Exception ex)
+        {
+            notReadyReason = $"could not list mp4 files ({ex.Message})";
+            return false;
+        }
+
+        var hasEventJson = File.Exists(eventJsonPath);
+        var hasThumb = File.Exists(thumbPngPath);
+        if (!hasEventJson || !hasThumb || mp4Count < MinimumMp4Files)
+        {
+            notReadyReason = $"event.json={hasEventJson}, thumb.png={hasThumb}, mp4 files={mp4Count}/{MinimumMp4Files}";
+            return false;
+        }
+
+        DateTime latestWrite;
+        try
+        {
+            latestWrite = Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories)
+                .Select(File.GetLastWriteTimeUtc)
+                .DefaultIfEmpty(DateTime.UtcNow)
+                .Max();
+        }
+        catch (Exception ex)
+        {
+            notReadyReason = $"could not read file times ({ex.Message})";
+            return false;
+        }
+
+        var idleFor = DateTime.UtcNow - latestWrite;
+        if (idleFor < FolderQuietPeriod)
+        {
+            notReadyReason = $"still writing (idle {idleFor.TotalSeconds:F0}s, need {FolderQuietPeriod.TotalSeconds:F0}s)";
+            return false;
+        }
+
+        _logger.LogInformation("Folder is ready: {Folder}", directory);
+        notReadyReason = string.Empty;
+        return true;
     }
 
     private static HttpClient CreateGeoHttpClient()
