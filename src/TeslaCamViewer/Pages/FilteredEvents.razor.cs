@@ -383,6 +383,11 @@ public partial class FilteredEvents : IAsyncDisposable
 
     private async Task PlayerInvokeVoid(string method, params object?[] args)
     {
+        if (!RendererInfo.IsInteractive)
+        {
+            return;
+        }
+
         try
         {
             await JS.InvokeVoidAsync($"teslaCamPlayer.{method}", args);
@@ -392,6 +397,10 @@ public partial class FilteredEvents : IAsyncDisposable
         }
         catch (TaskCanceledException)
         {
+        }
+        catch (InvalidOperationException)
+        {
+            // Prerender / static render has no JS runtime.
         }
         catch (JSException ex)
         {
@@ -513,16 +522,7 @@ public partial class FilteredEvents : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         await StopTimelineUpdater();
-        try
-        {
-            await JS.InvokeVoidAsync("teslaCamPlayer.dispose");
-        }
-        catch (JSDisconnectedException)
-        {
-        }
-        catch (TaskCanceledException)
-        {
-        }
+        await PlayerInvokeVoid("dispose");
 
         _jsRef?.Dispose();
         _jsRef = null;
