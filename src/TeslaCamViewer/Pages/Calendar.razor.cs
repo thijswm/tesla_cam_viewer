@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Components.Web;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using TeslaCamViewer.Data;
+using TeslaCamViewer.Shared;
 
 namespace TeslaCamViewer.Pages;
 
@@ -25,18 +26,17 @@ public partial class Calendar
 
     private async Task LoadMonthAsync()
     {
-        var start = DateTime.SpecifyKind(_currentMonth, DateTimeKind.Utc);
-        var end = DateTime.SpecifyKind(_currentMonth.AddMonths(1), DateTimeKind.Utc);
+        var (startUtc, endUtc) = EventLocalTime.UtcRangeForLocalMonth(_currentMonth);
 
         await using var db = await DbFactory.CreateDbContextAsync();
         var monthEvents = await db.Events.AsNoTracking()
-            .Where(e => e.TimeStamp >= start && e.TimeStamp < end)
+            .Where(e => e.TimeStamp >= startUtc && e.TimeStamp < endUtc)
             .OrderBy(e => e.TimeStamp)
             .Select(e => new { e.Id, e.TimeStamp, HasThumbnail = e.Thumbnail != null })
             .ToListAsync();
 
-        var daysInMonth = DateTime.DaysInMonth(start.Year, start.Month);
-        var firstDayOffset = (int)start.DayOfWeek;
+        var daysInMonth = DateTime.DaysInMonth(_currentMonth.Year, _currentMonth.Month);
+        var firstDayOffset = (int)_currentMonth.DayOfWeek;
 
         var cells = new List<CalendarCell>();
 
@@ -47,8 +47,11 @@ public partial class Calendar
 
         for (var day = 1; day <= daysInMonth; day++)
         {
-            var date = new DateTime(start.Year, start.Month, day, 0, 0, 0, DateTimeKind.Utc);
-            var dayEvents = monthEvents.Where(e => e.TimeStamp.Date == date.Date).ToList();
+            var date = new DateTime(_currentMonth.Year, _currentMonth.Month, day);
+            var (dayStartUtc, dayEndUtc) = EventLocalTime.UtcRangeForLocalDate(date);
+            var dayEvents = monthEvents
+                .Where(e => e.TimeStamp >= dayStartUtc && e.TimeStamp < dayEndUtc)
+                .ToList();
             var thumbnailEventId = dayEvents.FirstOrDefault(e => e.HasThumbnail)?.Id;
 
             cells.Add(new CalendarCell

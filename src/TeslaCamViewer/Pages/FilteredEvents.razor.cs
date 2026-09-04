@@ -95,8 +95,7 @@ public partial class FilteredEvents : IAsyncDisposable
             citiesQuery = citiesQuery.Where(e => e.Source == filterSource);
         if (filterDate.HasValue)
         {
-            var startDate = DateTime.SpecifyKind(filterDate.Value.Date, DateTimeKind.Utc);
-            var endDate = startDate.AddDays(1);
+            var (startDate, endDate) = EventLocalTime.UtcRangeForLocalDate(filterDate.Value);
             citiesQuery = citiesQuery.Where(e => e.TimeStamp >= startDate && e.TimeStamp < endDate);
         }
         _availableCities = await citiesQuery
@@ -112,8 +111,7 @@ public partial class FilteredEvents : IAsyncDisposable
             sourcesQuery = sourcesQuery.Where(e => e.City.Contains(filterCity));
         if (filterDate.HasValue)
         {
-            var startDate = DateTime.SpecifyKind(filterDate.Value.Date, DateTimeKind.Utc);
-            var endDate = startDate.AddDays(1);
+            var (startDate, endDate) = EventLocalTime.UtcRangeForLocalDate(filterDate.Value);
             sourcesQuery = sourcesQuery.Where(e => e.TimeStamp >= startDate && e.TimeStamp < endDate);
         }
         _availableSources = await sourcesQuery
@@ -129,10 +127,12 @@ public partial class FilteredEvents : IAsyncDisposable
             datesQuery = datesQuery.Where(e => e.City.Contains(filterCity));
         if (!string.IsNullOrEmpty(filterSource))
             datesQuery = datesQuery.Where(e => e.Source == filterSource);
-        _eventDates = await datesQuery
-            .Select(e => e.TimeStamp.Date)
+        _eventDates = (await datesQuery
+                .Select(e => e.TimeStamp)
+                .ToListAsync())
+            .Select(EventLocalTime.ToLocalDate)
             .Distinct()
-            .ToListAsync();
+            .ToList();
     }
 
     private async Task LoadFilteredEvents()
@@ -151,9 +151,7 @@ public partial class FilteredEvents : IAsyncDisposable
 
         if (filterDate.HasValue)
         {
-            // Specify UTC to avoid PostgreSQL DateTimeKind issues
-            var startDate = DateTime.SpecifyKind(filterDate.Value.Date, DateTimeKind.Utc);
-            var endDate = startDate.AddDays(1);
+            var (startDate, endDate) = EventLocalTime.UtcRangeForLocalDate(filterDate.Value);
             query = query.Where(e => e.TimeStamp >= startDate && e.TimeStamp < endDate);
         }
 

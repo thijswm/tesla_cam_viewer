@@ -125,10 +125,10 @@
                                         <div class="teslacam-right">
                                             <div class="teslacam-meta">
                                                 <MudText Typo="Typo.subtitle1" Class="teslacam-time">
-                                                    @(clipItem.Event.TimeStamp.ToString("HH:mm:ss") ?? "")
+                                                    @(clipItem.Event.TimeStamp.ToLocalTime().ToString("HH:mm:ss") ?? "")
                                                 </MudText>
                                                 <MudText Typo="Typo.caption" Class="teslacam-day">
-                                                    @(clipItem.Event.TimeStamp.ToString("ddd") ?? "")
+                                                    @(clipItem.Event.TimeStamp.ToLocalTime().ToString("ddd") ?? "")
                                                 </MudText>
                                             </div>
 
