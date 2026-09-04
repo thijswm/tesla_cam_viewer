@@ -1,4 +1,11 @@
 window.teslaCamPlayer = (function () {
+    const SKIP_SECONDS = 5;
+    let timelineTimer = null;
+    let timelineRef = null;
+    let timelineBusy = false;
+    let maxDuration = 60;
+    let keysBound = false;
+
     function videos() {
         return Array.from(document.querySelectorAll(".camera-video"));
     }
@@ -65,13 +72,126 @@ window.teslaCamPlayer = (function () {
         return latest;
     }
 
-    let timelineTimer = null;
-    let timelineRef = null;
-    let timelineBusy = false;
+    function notifySeek(time) {
+        if (!timelineRef) return;
+        timelineRef.invokeMethodAsync("OnPlayerSeek", time).catch(() => { });
+    }
 
-    function startTimeline(dotNetRef, intervalMs) {
+    function skipBy(delta, duration) {
+        const limit = Number(duration) > 0 ? Number(duration) : maxDuration;
+        const next = Math.max(0, Math.min(limit, getTimelineTime() + Number(delta)));
+        seek(next);
+        notifySeek(next);
+        return next;
+    }
+
+    function videoByCamera(cameraName) {
+        if (cameraName) {
+            const named = document.querySelector(`.camera-video[data-camera="${cameraName}"]`);
+            if (named) return named;
+        }
+        return document.querySelector(".camera-video.event-camera") || videos()[0] || null;
+    }
+
+    function requestFs(el) {
+        if (!el) return;
+        if (el.requestFullscreen) return el.requestFullscreen();
+        if (el.webkitRequestFullscreen) return el.webkitRequestFullscreen();
+        if (el.webkitEnterFullscreen) return el.webkitEnterFullscreen();
+    }
+
+    function exitFs() {
+        if (document.exitFullscreen) return document.exitFullscreen();
+        if (document.webkitExitFullscreen) return document.webkitExitFullscreen();
+    }
+
+    function isFullscreen() {
+        return !!(document.fullscreenElement || document.webkitFullscreenElement);
+    }
+
+    function fullscreen(cameraName) {
+        const video = videoByCamera(cameraName);
+        if (!video) return;
+
+        if (isFullscreen()) {
+            const current = document.fullscreenElement || document.webkitFullscreenElement;
+            if (!cameraName || current === video) {
+                exitFs();
+                return;
+            }
+        }
+
+        requestFs(video);
+    }
+
+    function isTypingTarget(el) {
+        if (!el) return false;
+        const node = el.nodeType === 3 ? el.parentElement : el;
+        if (!node || !node.closest) return false;
+        const tag = (node.tagName || "").toLowerCase();
+        if (tag === "input" || tag === "textarea" || tag === "select") return true;
+        if (node.isContentEditable) return true;
+        return !!node.closest('[contenteditable="true"], .mud-input, .mud-picker, .mud-overlay, .mud-popover, .mud-menu, .mud-select');
+    }
+
+    function onKeyDown(e) {
+        if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
+        if (isTypingTarget(e.target)) return;
+        if (videos().length === 0) return;
+
+        const key = e.key;
+        if (key === " " || key === "Spacebar") {
+            e.preventDefault();
+            if (timelineRef) {
+                timelineRef.invokeMethodAsync("OnPlayerTogglePlayPause").catch(() => { });
+            }
+            return;
+        }
+        if (key === "ArrowLeft") {
+            e.preventDefault();
+            skipBy(-SKIP_SECONDS);
+            return;
+        }
+        if (key === "ArrowRight") {
+            e.preventDefault();
+            skipBy(SKIP_SECONDS);
+            return;
+        }
+        if (key === "f" || key === "F") {
+            e.preventDefault();
+            fullscreen();
+        }
+    }
+
+    function onDblClick(e) {
+        const video = e.target && e.target.closest && e.target.closest(".camera-video");
+        if (!video) return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        fullscreen(video.dataset.camera);
+    }
+
+    function bindKeys() {
+        if (keysBound) return;
+        document.addEventListener("keydown", onKeyDown, true);
+        document.addEventListener("dblclick", onDblClick, true);
+        keysBound = true;
+    }
+
+    function unbindKeys() {
+        if (!keysBound) return;
+        document.removeEventListener("keydown", onKeyDown, true);
+        document.removeEventListener("dblclick", onDblClick, true);
+        keysBound = false;
+    }
+
+    function startTimeline(dotNetRef, intervalMs, duration) {
         stopTimeline();
         timelineRef = dotNetRef;
+        if (Number(duration) > 0) {
+            maxDuration = Number(duration);
+        }
+        bindKeys();
         const ms = Number(intervalMs) > 0 ? Number(intervalMs) : 250;
         timelineTimer = setInterval(() => {
             if (timelineBusy || !timelineRef) return;
@@ -92,8 +212,21 @@ window.teslaCamPlayer = (function () {
 
     function dispose() {
         stopTimeline();
+        unbindKeys();
         timelineRef = null;
     }
 
-    return { seek, play, pause, reset, reload, getTimelineTime, startTimeline, stopTimeline, dispose };
+    return {
+        seek,
+        play,
+        pause,
+        reset,
+        reload,
+        skipBy,
+        fullscreen,
+        getTimelineTime,
+        startTimeline,
+        stopTimeline,
+        dispose
+    };
 })();

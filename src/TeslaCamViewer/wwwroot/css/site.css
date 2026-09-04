@@ -199,3 +199,63 @@ body {
         z-index: 100;
     }
 }
+
+/* ===============================
+   Player timeline + fullscreen
+   =============================== */
+
+.event-trigger-marker {
+    position: absolute;
+    top: 0;
+    bottom: 16px;
+    width: 18px;
+    transform: translateX(-50%);
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+    z-index: 1000;
+}
+
+.event-trigger-marker .event-trigger-line {
+    position: absolute;
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    transform: translateX(-50%);
+    background-color: #ff3b6b;
+    pointer-events: none;
+}
+
+.event-trigger-marker .event-trigger-caret {
+    position: absolute;
+    top: -6px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 0;
+    height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 6px solid #ff3b6b;
+    pointer-events: none;
+}
+
+.event-trigger-marker:hover .event-trigger-line,
+.event-trigger-marker:focus-visible .event-trigger-line {
+    width: 5px;
+    box-shadow: 0 0 8px rgba(255, 59, 107, 0.85);
+}
+
+.event-trigger-marker:focus-visible {
+    outline: none;
+}
+
+.camera-video:fullscreen,
+.camera-video:-webkit-full-screen {
+    width: 100%;
+    height: 100%;
+    background: #000;
+    object-fit: contain;
+    border-radius: 0;
+}

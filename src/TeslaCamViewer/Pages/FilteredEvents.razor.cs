@@ -34,6 +34,14 @@ public partial class FilteredEvents : IAsyncDisposable
     private List<string> _availableSources = new();
     private List<DateTime> _eventDates = new();
 
+    private static readonly (string Key, string Title)[] CameraSlots =
+    [
+        ("front", "Front Camera"),
+        ("back", "Back Camera"),
+        ("left_repeater", "Left Repeater"),
+        ("right_repeater", "Right Repeater")
+    ];
+
     private List<CameraMetadata>? cameras;
     private bool isPlaying = false;
 
@@ -343,22 +351,46 @@ public partial class FilteredEvents : IAsyncDisposable
         await PlayerInvokeVoid("seek", newTime);
     }
 
-    private async Task SkipBackward()
+    private Task SkipBackward() => PlayerInvokeVoid("skipBy", -5, videoDuration);
+
+    private Task SkipForward() => PlayerInvokeVoid("skipBy", 5, videoDuration);
+
+    private Task FullscreenCamera(string cameraName) => PlayerInvokeVoid("fullscreen", cameraName);
+
+    private double? GetEventTriggerSeconds()
     {
-        var newTime = Math.Max(0, currentTime - 5);
-        await OnTimelineChanged(newTime);
+        if (!minTimestamp.HasValue || _selectedEvent?.Event is null)
+        {
+            return null;
+        }
+
+        var offset = (_selectedEvent.Event.TimeStamp - minTimestamp.Value).TotalSeconds;
+        if (offset < 0 || offset > videoDuration)
+        {
+            return null;
+        }
+
+        return offset;
     }
 
-    private async Task SkipForward()
+    private async Task JumpToEventTrigger()
     {
-        var newTime = Math.Min(videoDuration, currentTime + 5);
-        await OnTimelineChanged(newTime);
+        if (!minTimestamp.HasValue || _selectedEvent?.Event is null)
+        {
+            return;
+        }
+
+        var offset = Math.Clamp(
+            (_selectedEvent.Event.TimeStamp - minTimestamp.Value).TotalSeconds,
+            0,
+            videoDuration);
+        await OnTimelineChanged(offset);
     }
 
     private async Task StartTimelineUpdater()
     {
         _jsRef ??= DotNetObjectReference.Create(this);
-        await PlayerInvokeVoid("startTimeline", _jsRef, 250);
+        await PlayerInvokeVoid("startTimeline", _jsRef, 250, videoDuration);
     }
 
     private async Task StopTimelineUpdater()
@@ -378,6 +410,17 @@ public partial class FilteredEvents : IAsyncDisposable
         StateHasChanged();
         return Task.CompletedTask;
     }
+
+    [JSInvokable]
+    public Task OnPlayerSeek(double time)
+    {
+        currentTime = time;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    [JSInvokable]
+    public Task OnPlayerTogglePlayPause() => TogglePlayPause();
 
     private async Task PlayerInvokeVoid(string method, params object?[] args)
     {
