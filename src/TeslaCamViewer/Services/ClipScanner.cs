@@ -22,8 +22,7 @@ public class ClipScanner : BackgroundService
     private static readonly HttpClient GeoHttpClient = CreateGeoHttpClient();
 
     private static readonly TimeSpan FolderQuietPeriod = TimeSpan.FromSeconds(10);
-    private static readonly TimeSpan FolderQuietPollInterval = TimeSpan.FromSeconds(1);
-    private static readonly TimeSpan FolderQuietStatusInterval = TimeSpan.FromSeconds(5);
+    private const int MinimumMp4Files = 4;
 
     public ClipScanner(ILogger<ClipScanner> logger, IServiceProvider sp, IMinioClient minio, IConfiguration config)
     {
@@ -103,116 +102,196 @@ public class ClipScanner : BackgroundService
 
         foreach (var dir in Directory.EnumerateDirectories(root))
         {
-            await using var db = await dbFactory.CreateDbContextAsync(ct);
-
-            var folderName = Path.GetFileName(dir);
-            var evt = await db.Events.FirstOrDefaultAsync(e => e.FolderName == folderName && e.Source == source, ct);
-            if (evt == null)
+            try
             {
-                _logger.LogInformation("Waiting for folder: {Folder} to be quiet", dir);
-                await WaitForDirectoryQuiet(dir, FolderQuietPeriod, FolderQuietPollInterval, FolderQuietStatusInterval, ct);
-                evt = new Event { FolderName = folderName, CreatedAt = DateTime.UtcNow, Source = source };
-                var eventJson = Path.Combine(dir, "event.json");
-                if (File.Exists(eventJson))
+                await using var db = await dbFactory.CreateDbContextAsync(ct);
+
+                var folderName = Path.GetFileName(dir);
+                var evt = await db.Events.FirstOrDefaultAsync(e => e.FolderName == folderName && e.Source == source, ct);
+                if (evt == null)
                 {
-                    try
+                    if (!TryGetDirectoryReady(dir, out var notReadyReason))
                     {
-                        using var s = File.OpenRead(eventJson);
-                        var doc = await JsonDocument.ParseAsync(s, cancellationToken: ct);
-                        evt.Type = doc.RootElement.TryGetProperty("reason", out var r) ? r.GetString() ?? "unknown" : "unknown";
-                        evt.City = doc.RootElement.TryGetProperty("city", out var c) ? c.GetString() ?? string.Empty : string.Empty;
-                        evt.Street = doc.RootElement.TryGetProperty("street", out var st) ? st.GetString() ?? string.Empty : string.Empty;
-                        if (doc.RootElement.TryGetProperty("timestamp", out var tsProp))
-                        {
-                            var tsText = tsProp.GetString();
-                            if (!string.IsNullOrWhiteSpace(tsText))
-                            {
-                                // Parse as UTC if no offset provided
-                                if (DateTime.TryParse(tsText, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal, out var parsed))
-                                {
-                                    evt.TimeStamp = DateTime.SpecifyKind(parsed, DateTimeKind.Utc);
-                                }
-                                else
-                                {
-                                    throw new Exception($"Failed to parse timestamp '{tsText}' in event.json");
-                                }
-                            }
-                            else
-                            {
-                                throw new Exception($"Timestamp in event.json is empty");
-                            }
-                        }
-                        else
-                        {
-                            throw new Exception($"Timestamp not found in event.json");
-                        }
-                        evt.Long = doc.RootElement.TryGetProperty("est_lon", out var lon) ? lon.GetString() ?? string.Empty : string.Empty;
-                        evt.Lat = doc.RootElement.TryGetProperty("est_lat", out var lat) ? lat.GetString() ?? string.Empty : string.Empty;
-                        if (doc.RootElement.TryGetProperty("camera", out var camera))
-                        {
-                            if (!int.TryParse(camera.GetString(), out var camInt))
-                            {
-                                throw new Exception($"Failed to parse camera value '{camera.GetString()}' in event.json");
-                            }
-                            evt.Camera = camInt;
-                        }
-
-                        if (_enableReverseGeocoding
-                            && double.TryParse(evt.Lat, NumberStyles.Float, CultureInfo.InvariantCulture, out var latValue)
-                            && double.TryParse(evt.Long, NumberStyles.Float, CultureInfo.InvariantCulture, out var lonValue))
-                        {
-                            _logger.LogInformation("Reverse geocoding enabled for {FolderName} at {Lat},{Lon}", folderName, latValue, lonValue);
-                            await TryPopulateAddressAsync(evt, latValue, lonValue, ct);
-                            _logger.LogInformation("Reverse geocoding result for {FolderName}: Street={Street}, City={City}", folderName, evt.Street, evt.City);
-                        }
-                        _logger.LogDebug("Parsed event.json for {FolderName}: Type={Type}", folderName, evt.Type);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "Failed to read event.json in {Dir}", dir);
+                        _logger.LogInformation("Skipping folder until next scan: {Folder} ({Reason})", dir, notReadyReason);
+                        continue;
                     }
 
-                    var eventThumbnail = Path.Combine(dir, "thumb.png");
-                    if (File.Exists(eventThumbnail))
-                    {
-                        try
-                        {
-                            evt.Thumbnail = await File.ReadAllBytesAsync(eventThumbnail, ct);
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogWarning(ex, "Failed to read thumb.png in {Dir}", dir);
-                        }
-                    }
+                    evt = await CreateEventFromFolderAsync(dir, folderName, source, ct);
+                    db.Events.Add(evt);
+                    eventsProcessed++;
+                    _logger.LogInformation("New event detected: {FolderName} ({Source})", folderName, source);
+                    await db.SaveChangesAsync(ct);
                 }
-                db.Events.Add(evt);
-                eventsProcessed++;
-                _logger.LogInformation("New event detected: {FolderName} ({Source})", folderName, source);
+                else if (await IsEventCompleteAsync(db, evt, dir, ct))
+                {
+                    continue;
+                }
+                else
+                {
+                    _logger.LogInformation("Retrying incomplete event {FolderName} ({Source}, EventId={EventId})",
+                        folderName, source, evt.Id);
+                }
 
-                // Save the event first to get its ID before creating cameras
+                var clipsAdded = await EnsureClipsAsync(evt, dir, db, ct);
+                clipsInserted += clipsAdded;
                 await db.SaveChangesAsync(ct);
-
-                // Simplified - no redundant checks
-                foreach (var mp4 in Directory.EnumerateFiles(dir, "*.mp4"))
-                {
-                    var name = Path.GetFileName(mp4);
-                    var camera = GetCameraFromName(name);
-                    var ts = GetTimestampFromName(name) ?? DateTime.UtcNow;
-                    
-                    db.Clips.Add(new Clip { Camera = camera, Path = mp4, Timestamp = ts, Event = evt });
-                    clipsInserted++;
-                    _logger.LogDebug("Queued clip insert: {Camera} {Timestamp:u} -> {Path}", camera, ts, mp4);
-                }
 
                 await StitchAndStoreCameras(evt, dir, db, ct);
-                await db.SaveChangesAsync(ct);
 
-                // Log just the clips for THIS event instead of all clips
-                _logger.LogInformation("Processed folder {FolderName}: clips added={ClipsAdded}", folderName, clipsInserted);
+                _logger.LogInformation("Processed folder {FolderName}: clips added={ClipsAdded}", folderName, clipsAdded);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to process folder {Dir}; will retry on next scan", dir);
             }
         }
 
         _logger.LogInformation("Scan completed for {Source}. EventsProcessed={EventsProcessed}, ClipsInserted={ClipsInserted}", source, eventsProcessed, clipsInserted);
+    }
+
+    private async Task<Event> CreateEventFromFolderAsync(string dir, string folderName, string source, CancellationToken ct)
+    {
+        var evt = new Event { FolderName = folderName, CreatedAt = DateTime.UtcNow, Source = source };
+        var eventJson = Path.Combine(dir, "event.json");
+        if (!File.Exists(eventJson))
+        {
+            return evt;
+        }
+
+        try
+        {
+            using var s = File.OpenRead(eventJson);
+            var doc = await JsonDocument.ParseAsync(s, cancellationToken: ct);
+            evt.Type = doc.RootElement.TryGetProperty("reason", out var r) ? r.GetString() ?? "unknown" : "unknown";
+            evt.City = doc.RootElement.TryGetProperty("city", out var c) ? c.GetString() ?? string.Empty : string.Empty;
+            evt.Street = doc.RootElement.TryGetProperty("street", out var st) ? st.GetString() ?? string.Empty : string.Empty;
+            if (doc.RootElement.TryGetProperty("timestamp", out var tsProp))
+            {
+                var tsText = tsProp.GetString();
+                if (!string.IsNullOrWhiteSpace(tsText))
+                {
+                    if (DateTime.TryParse(tsText, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var parsed))
+                    {
+                        evt.TimeStamp = DateTime.SpecifyKind(parsed, DateTimeKind.Utc);
+                    }
+                    else
+                    {
+                        throw new Exception($"Failed to parse timestamp '{tsText}' in event.json");
+                    }
+                }
+                else
+                {
+                    throw new Exception("Timestamp in event.json is empty");
+                }
+            }
+            else
+            {
+                throw new Exception("Timestamp not found in event.json");
+            }
+            evt.Long = doc.RootElement.TryGetProperty("est_lon", out var lon) ? lon.GetString() ?? string.Empty : string.Empty;
+            evt.Lat = doc.RootElement.TryGetProperty("est_lat", out var lat) ? lat.GetString() ?? string.Empty : string.Empty;
+            if (doc.RootElement.TryGetProperty("camera", out var camera))
+            {
+                if (!int.TryParse(camera.GetString(), out var camInt))
+                {
+                    throw new Exception($"Failed to parse camera value '{camera.GetString()}' in event.json");
+                }
+                evt.Camera = camInt;
+            }
+
+            if (_enableReverseGeocoding
+                && double.TryParse(evt.Lat, NumberStyles.Float, CultureInfo.InvariantCulture, out var latValue)
+                && double.TryParse(evt.Long, NumberStyles.Float, CultureInfo.InvariantCulture, out var lonValue))
+            {
+                _logger.LogInformation("Reverse geocoding enabled for {FolderName} at {Lat},{Lon}", folderName, latValue, lonValue);
+                await TryPopulateAddressAsync(evt, latValue, lonValue, ct);
+                _logger.LogInformation("Reverse geocoding result for {FolderName}: Street={Street}, City={City}", folderName, evt.Street, evt.City);
+            }
+            _logger.LogDebug("Parsed event.json for {FolderName}: Type={Type}", folderName, evt.Type);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to read event.json in {Dir}", dir);
+        }
+
+        var eventThumbnail = Path.Combine(dir, "thumb.png");
+        if (File.Exists(eventThumbnail))
+        {
+            try
+            {
+                evt.Thumbnail = await File.ReadAllBytesAsync(eventThumbnail, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to read thumb.png in {Dir}", dir);
+            }
+        }
+
+        return evt;
+    }
+
+    private async Task<bool> IsEventCompleteAsync(AppDbContext db, Event evt, string dir, CancellationToken ct)
+    {
+        var mp4Files = Directory.EnumerateFiles(dir, "*.mp4").ToList();
+        var camerasOnDisk = mp4Files
+            .Select(f => GetCameraFromName(Path.GetFileName(f)))
+            .Where(name => name != "unknown")
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (camerasOnDisk.Count > 0)
+        {
+            var storedCameras = await db.Cameras
+                .Where(c => c.EventId == evt.Id)
+                .Select(c => c.CameraName)
+                .ToListAsync(ct);
+
+            var storedSet = storedCameras.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            if (camerasOnDisk.Any(name => !storedSet.Contains(name)))
+            {
+                return false;
+            }
+        }
+
+        var storedClipCount = await db.Clips.CountAsync(c => c.EventId == evt.Id, ct);
+        return storedClipCount >= mp4Files.Count;
+    }
+
+    private async Task<int> EnsureClipsAsync(Event evt, string dir, AppDbContext db, CancellationToken ct)
+    {
+        var existingPaths = await db.Clips
+            .Where(c => c.EventId == evt.Id)
+            .Select(c => c.Path)
+            .ToListAsync(ct);
+        var existing = existingPaths.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var added = 0;
+        foreach (var mp4 in Directory.EnumerateFiles(dir, "*.mp4"))
+        {
+            if (existing.Contains(mp4))
+            {
+                continue;
+            }
+
+            var name = Path.GetFileName(mp4);
+            var camera = GetCameraFromName(name);
+            DateTime ts;
+            try
+            {
+                ts = GetTimestampFromName(name) ?? DateTime.UtcNow;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Could not parse timestamp from {Name}, using UTC now", name);
+                ts = DateTime.UtcNow;
+            }
+
+            db.Clips.Add(new Clip { Camera = camera, Path = mp4, Timestamp = ts, Event = evt });
+            added++;
+            _logger.LogDebug("Queued clip insert: {Camera} {Timestamp:u} -> {Path}", camera, ts, mp4);
+        }
+
+        return added;
     }
 
     private async Task StitchAndStoreCameras(Event evt, string dir, AppDbContext db, CancellationToken ct)
@@ -249,8 +328,8 @@ public class ClipScanner : BackgroundService
 
                 if (cameraData != null)
                 {
-                    // Quick database insert after upload is complete
                     db.Cameras.Add(cameraData);
+                    await db.SaveChangesAsync(ct);
                 }
             }
             catch (Exception ex)
@@ -274,34 +353,24 @@ public class ClipScanner : BackgroundService
 
             if (mp4Files.Count == 1)
             {
-                // Single file - upload directly
-                fileToUpload = mp4Files[0];
+                await RemuxWithFastStart(mp4Files[0], tempOutput, ct);
+                fileToUpload = tempOutput;
                 timestamp = GetTimestampFromName(Path.GetFileName(mp4Files[0])) ?? DateTime.UtcNow;
-
-                // Get video duration
-                var mediaInfo = await FFProbe.AnalyseAsync(fileToUpload, cancellationToken: ct);
-                duration = mediaInfo.Duration;
-                fileSize = new FileInfo(fileToUpload).Length;
-
-                _logger.LogInformation("Single video for camera {CameraName}: {Size} bytes, duration: {Duration}",
-                    cameraName, fileSize, duration);
             }
             else
             {
-                // Multiple files - stitch them together
                 await StitchVideos(mp4Files, tempOutput, ct);
-
                 fileToUpload = tempOutput;
                 timestamp = GetTimestampFromName(Path.GetFileName(mp4Files[0])) ?? DateTime.UtcNow;
-
-                // Get duration of stitched video
-                var mediaInfo = await FFProbe.AnalyseAsync(fileToUpload, cancellationToken: ct);
-                duration = mediaInfo.Duration;
-                fileSize = new FileInfo(fileToUpload).Length;
-
-                _logger.LogInformation("Stitched {Count} videos for camera {CameraName}: {Size} bytes, duration: {Duration}",
-                    mp4Files.Count, cameraName, fileSize, duration);
             }
+
+            var mediaInfo = await FFProbe.AnalyseAsync(fileToUpload, cancellationToken: ct);
+            duration = mediaInfo.Duration;
+            fileSize = new FileInfo(fileToUpload).Length;
+
+            _logger.LogInformation(
+                "Prepared {Count} video(s) for camera {CameraName}: {Size} bytes, duration: {Duration}",
+                mp4Files.Count, cameraName, fileSize, duration);
 
             // Upload to MinIO (this can take time, but DB connection is not held)
             var minioPath = $"events/{evt.FolderName}/{cameraName}.mp4";
@@ -323,8 +392,7 @@ public class ClipScanner : BackgroundService
         }
         finally
         {
-            // Clean up temp file if it was created
-            if (mp4Files.Count > 1 && File.Exists(tempOutput))
+            if (File.Exists(tempOutput))
             {
                 try
                 {
@@ -375,15 +443,14 @@ public class ClipScanner : BackgroundService
 
             _logger.LogDebug("Created concat file: {ConcatFile}", concatFile);
 
-            // Use FFmpeg to concatenate videos
-            var ffmpegArgs = $"-f concat -safe 0 -i \"{concatFile}\" -c copy \"{outputFile}\"";
-
             await FFMpegArguments
                 .FromFileInput(concatFile, false, options => options
                     .WithCustomArgument("-f concat")
                     .WithCustomArgument("-safe 0"))
                 .OutputToFile(outputFile, true, options => options
-                    .CopyChannel())
+                    .CopyChannel()
+                    .WithCustomArgument("-movflags +faststart"))
+                .CancellableThrough(ct)
                 .ProcessAsynchronously();
 
             _logger.LogDebug("FFmpeg concatenation completed: {OutputFile}", outputFile);
@@ -403,6 +470,19 @@ public class ClipScanner : BackgroundService
                 }
             }
         }
+    }
+
+    private async Task RemuxWithFastStart(string inputFile, string outputFile, CancellationToken ct)
+    {
+        await FFMpegArguments
+            .FromFileInput(inputFile)
+            .OutputToFile(outputFile, true, options => options
+                .CopyChannel()
+                .WithCustomArgument("-movflags +faststart"))
+            .CancellableThrough(ct)
+            .ProcessAsynchronously();
+
+        _logger.LogDebug("Remuxed {Input} with faststart to {Output}", inputFile, outputFile);
     }
 
     private static string GetCameraFromName(string fileName)
@@ -435,72 +515,54 @@ public class ClipScanner : BackgroundService
         return new DateTime(year, month, day, hour, minute, second, DateTimeKind.Utc);
     }
 
-    private async Task WaitForDirectoryQuiet(string directory, TimeSpan quietPeriod, TimeSpan pollInterval, TimeSpan statusInterval, CancellationToken ct)
+    private bool TryGetDirectoryReady(string directory, out string notReadyReason)
     {
-        DateTime? lastChange = null;
-        DateTime? lastObserved = null;
-        var lastStatusLog = DateTime.UtcNow;
+        var eventJsonPath = Path.Combine(directory, "event.json");
+        var thumbPngPath = Path.Combine(directory, "thumb.png");
 
-        while (!ct.IsCancellationRequested)
+        int mp4Count;
+        try
         {
-            // Check if required files exist
-            var eventJsonPath = Path.Combine(directory, "event.json");
-            var thumbPngPath = Path.Combine(directory, "thumb.png");
-            var mp4Files = Directory.EnumerateFiles(directory, "*.mp4").ToList();
-
-            bool hasRequiredFiles = File.Exists(eventJsonPath)
-                && File.Exists(thumbPngPath)
-                && mp4Files.Count >= 4;
-
-            if (!hasRequiredFiles)
-            {
-                if (DateTime.UtcNow - lastStatusLog >= statusInterval)
-                {
-                    _logger.LogInformation("Waiting for required files in folder: {Folder} (event.json: {EventJson}, thumb.png: {ThumbPng}, mp4 files: {Mp4Count}/4)",
-                        directory, File.Exists(eventJsonPath), File.Exists(thumbPngPath), mp4Files.Count);
-                    lastStatusLog = DateTime.UtcNow;
-                }
-
-                await Task.Delay(pollInterval, ct);
-                continue;
-            }
-
-            DateTime? latestWrite = null;
-
-            foreach (var file in Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories))
-            {
-                var writeTime = File.GetLastWriteTimeUtc(file);
-                if (latestWrite == null || writeTime > latestWrite)
-                {
-                    latestWrite = writeTime;
-                }
-            }
-
-            if (latestWrite == null)
-            {
-                latestWrite = DateTime.UtcNow;
-            }
-
-            if (lastObserved == null || latestWrite != lastObserved)
-            {
-                lastObserved = latestWrite;
-                lastChange = DateTime.UtcNow;
-            }
-
-            if (lastChange != null && DateTime.UtcNow - lastChange >= quietPeriod)
-            {
-                _logger.LogInformation("Folder is ready: {Folder} (all required files present and quiet period met)", directory);
-                return;
-            }
-
-            if (DateTime.UtcNow - lastStatusLog >= statusInterval)
-            {
-                _logger.LogInformation("Still waiting for folder quiet: {Folder}", directory);
-                lastStatusLog = DateTime.UtcNow;
-            }
-
-            await Task.Delay(pollInterval, ct);
+            mp4Count = Directory.EnumerateFiles(directory, "*.mp4").Count();
         }
+        catch (Exception ex)
+        {
+            notReadyReason = $"could not list mp4 files ({ex.Message})";
+            return false;
+        }
+
+        var hasEventJson = File.Exists(eventJsonPath);
+        var hasThumb = File.Exists(thumbPngPath);
+        if (!hasEventJson || !hasThumb || mp4Count < MinimumMp4Files)
+        {
+            notReadyReason = $"event.json={hasEventJson}, thumb.png={hasThumb}, mp4 files={mp4Count}/{MinimumMp4Files}";
+            return false;
+        }
+
+        DateTime latestWrite;
+        try
+        {
+            latestWrite = Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories)
+                .Select(File.GetLastWriteTimeUtc)
+                .DefaultIfEmpty(DateTime.UtcNow)
+                .Max();
+        }
+        catch (Exception ex)
+        {
+            notReadyReason = $"could not read file times ({ex.Message})";
+            return false;
+        }
+
+        var idleFor = DateTime.UtcNow - latestWrite;
+        if (idleFor < FolderQuietPeriod)
+        {
+            notReadyReason = $"still writing (idle {idleFor.TotalSeconds:F0}s, need {FolderQuietPeriod.TotalSeconds:F0}s)";
+            return false;
+        }
+
+        _logger.LogInformation("Folder is ready: {Folder}", directory);
+        notReadyReason = string.Empty;
+        return true;
     }
 
     private static HttpClient CreateGeoHttpClient()

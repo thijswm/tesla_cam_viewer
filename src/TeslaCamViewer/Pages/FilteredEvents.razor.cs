@@ -3,11 +3,11 @@ using Microsoft.JSInterop;
 using Microsoft.EntityFrameworkCore;
 using TeslaCamViewer.Data;
 using TeslaCamViewer.Shared;
-using System.Timers;
+using System.Globalization;
 
 namespace TeslaCamViewer.Pages;
 
-public partial class FilteredEvents : IDisposable
+public partial class FilteredEvents : IAsyncDisposable
 {
     [Inject] public IDbContextFactory<AppDbContext>? DbFactory { get; set; }
     [Inject] public ILogger<FilteredEvents> Logger { get; set; } = default!;
@@ -34,6 +34,14 @@ public partial class FilteredEvents : IDisposable
     private List<string> _availableSources = new();
     private List<DateTime> _eventDates = new();
 
+    private static readonly (string Key, string Title)[] CameraSlots =
+    [
+        ("front", "Front Camera"),
+        ("back", "Back Camera"),
+        ("left_repeater", "Left Repeater"),
+        ("right_repeater", "Right Repeater")
+    ];
+
     private List<CameraMetadata>? cameras;
     private bool isPlaying = false;
 
@@ -41,7 +49,7 @@ public partial class FilteredEvents : IDisposable
     private double currentTime = 0;
     private double videoDuration = 60; // Default 60 seconds, will be updated from video
     private DateTime? minTimestamp = null; // Earliest camera timestamp (reference point for time 0)
-    private System.Timers.Timer? updateTimer;
+    private DotNetObjectReference<FilteredEvents>? _jsRef;
 
     // Lightweight camera metadata without video data
     private class CameraMetadata
@@ -87,7 +95,7 @@ public partial class FilteredEvents : IDisposable
         await using var db = await DbFactory.CreateDbContextAsync();
 
         // Build base query with current filters applied
-        var query = db.Events.AsQueryable();
+        var query = db.Events.AsNoTracking();
 
         // Load cities based on current source and date filters
         var citiesQuery = query;
@@ -95,8 +103,7 @@ public partial class FilteredEvents : IDisposable
             citiesQuery = citiesQuery.Where(e => e.Source == filterSource);
         if (filterDate.HasValue)
         {
-            var startDate = DateTime.SpecifyKind(filterDate.Value.Date, DateTimeKind.Utc);
-            var endDate = startDate.AddDays(1);
+            var (startDate, endDate) = EventLocalTime.UtcRangeForLocalDate(filterDate.Value);
             citiesQuery = citiesQuery.Where(e => e.TimeStamp >= startDate && e.TimeStamp < endDate);
         }
         _availableCities = await citiesQuery
@@ -112,8 +119,7 @@ public partial class FilteredEvents : IDisposable
             sourcesQuery = sourcesQuery.Where(e => e.City.Contains(filterCity));
         if (filterDate.HasValue)
         {
-            var startDate = DateTime.SpecifyKind(filterDate.Value.Date, DateTimeKind.Utc);
-            var endDate = startDate.AddDays(1);
+            var (startDate, endDate) = EventLocalTime.UtcRangeForLocalDate(filterDate.Value);
             sourcesQuery = sourcesQuery.Where(e => e.TimeStamp >= startDate && e.TimeStamp < endDate);
         }
         _availableSources = await sourcesQuery
@@ -129,10 +135,12 @@ public partial class FilteredEvents : IDisposable
             datesQuery = datesQuery.Where(e => e.City.Contains(filterCity));
         if (!string.IsNullOrEmpty(filterSource))
             datesQuery = datesQuery.Where(e => e.Source == filterSource);
-        _eventDates = await datesQuery
-            .Select(e => e.TimeStamp.Date)
+        _eventDates = (await datesQuery
+                .Select(e => e.TimeStamp)
+                .ToListAsync())
+            .Select(EventLocalTime.ToLocalDate)
             .Distinct()
-            .ToListAsync();
+            .ToList();
     }
 
     private async Task LoadFilteredEvents()
@@ -141,7 +149,7 @@ public partial class FilteredEvents : IDisposable
 
         await using var db = await DbFactory.CreateDbContextAsync();
         
-        var query = db.Events.Include(e => e.Clips).AsQueryable();
+        var query = db.Events.AsNoTracking();
 
         // Apply filters
         if (!string.IsNullOrEmpty(filterCity))
@@ -151,9 +159,7 @@ public partial class FilteredEvents : IDisposable
 
         if (filterDate.HasValue)
         {
-            // Specify UTC to avoid PostgreSQL DateTimeKind issues
-            var startDate = DateTime.SpecifyKind(filterDate.Value.Date, DateTimeKind.Utc);
-            var endDate = startDate.AddDays(1);
+            var (startDate, endDate) = EventLocalTime.UtcRangeForLocalDate(filterDate.Value);
             query = query.Where(e => e.TimeStamp >= startDate && e.TimeStamp < endDate);
         }
 
@@ -162,14 +168,29 @@ public partial class FilteredEvents : IDisposable
             query = query.Where(e => e.Source == filterSource);
         }
 
-        var events = await query.OrderByDescending(e => e.TimeStamp).ToListAsync();
+        var events = await query
+            .OrderByDescending(e => e.TimeStamp)
+            .Select(e => new Event
+            {
+                Id = e.Id,
+                FolderName = e.FolderName,
+                Type = e.Type,
+                CreatedAt = e.CreatedAt,
+                Source = e.Source,
+                Lat = e.Lat,
+                Long = e.Long,
+                City = e.City,
+                Street = e.Street,
+                Camera = e.Camera,
+                TimeStamp = e.TimeStamp
+            })
+            .ToListAsync();
         _filteredEvents = events.Select(e => new ClipItem(e)).ToList();
     }
 
     private async Task OnClipClicked(ClipItem clipItem)
     {
-        // Stop timer immediately when switching events
-        StopTimelineUpdater();
+        await StopTimelineUpdater();
 
         _selectedEvent = clipItem;
 
@@ -180,15 +201,7 @@ public partial class FilteredEvents : IDisposable
         isLoadingCameras = true;
         StateHasChanged();
 
-        // Pause all videos from previous event
-        try
-        {
-            await JS.InvokeVoidAsync("eval", "document.querySelectorAll('video').forEach(v => { v.pause(); v.currentTime = 0; })");
-        }
-        catch
-        {
-            // Ignore errors if no videos exist yet
-        }
+        await PlayerInvokeVoid("reset");
 
         // Load camera metadata
         await LoadCameraMetadata();
@@ -196,24 +209,12 @@ public partial class FilteredEvents : IDisposable
         isLoadingCameras = false;
         StateHasChanged();
 
-        // Give the DOM time to render the video elements
         await Task.Delay(100);
 
-        // Start timeline update timer for new event
-        StartTimelineUpdater();
-
-        // Initialize map with event location
         await InitializeEventMap();
 
-        // Force video elements to load
-        try
-        {
-            await JS.InvokeVoidAsync("eval", "document.querySelectorAll('.camera-video').forEach(v => { v.load(); })");
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Failed to load video elements");
-        }
+        await PlayerInvokeVoid("reload");
+        await StartTimelineUpdater();
     }
 
     private async Task LoadCameraMetadata()
@@ -277,6 +278,17 @@ public partial class FilteredEvents : IDisposable
                name.Equals(cameraName, StringComparison.OrdinalIgnoreCase);
     }
 
+    private string GetCameraOffsetSeconds(CameraMetadata camera)
+    {
+        if (!minTimestamp.HasValue)
+        {
+            return "0";
+        }
+
+        var offset = Math.Max(0, (camera.Timestamp - minTimestamp.Value).TotalSeconds);
+        return offset.ToString("0.###", CultureInfo.InvariantCulture);
+    }
+
     private string GetVideoUrl(CameraMetadata camera)
     {
         return $"/api/camera/{camera.Id}";
@@ -329,65 +341,111 @@ public partial class FilteredEvents : IDisposable
     private async Task TogglePlayPause()
     {
         isPlaying = !isPlaying;
-        var action = isPlaying ? "play" : "pause";
-        await JS.InvokeVoidAsync("eval", $"document.querySelectorAll('.camera-video').forEach(v => v.{action}())");
+        await PlayerInvokeVoid(isPlaying ? "play" : "pause");
         StateHasChanged();
     }
 
     private async Task OnTimelineChanged(double newTime)
     {
         currentTime = newTime;
-        await JS.InvokeVoidAsync("eval", $"document.querySelectorAll('.camera-video').forEach(v => v.currentTime = {newTime})");
+        await PlayerInvokeVoid("seek", newTime);
     }
 
-    private async Task SkipBackward()
-    {
-        var newTime = Math.Max(0, currentTime - 5);
-        await OnTimelineChanged(newTime);
-    }
+    private Task SkipBackward() => PlayerInvokeVoid("skipBy", -5, videoDuration);
 
-    private async Task SkipForward()
-    {
-        var newTime = Math.Min(videoDuration, currentTime + 5);
-        await OnTimelineChanged(newTime);
-    }
+    private Task SkipForward() => PlayerInvokeVoid("skipBy", 5, videoDuration);
 
-    private void StartTimelineUpdater()
-    {
-        if (updateTimer != null) return;
+    private Task FullscreenCamera(string cameraName) => PlayerInvokeVoid("fullscreen", cameraName);
 
-        updateTimer = new System.Timers.Timer(100); // Update every 100ms
-        updateTimer.Elapsed += async (sender, e) => await UpdateTimelinePosition();
-        updateTimer.AutoReset = true;
-        updateTimer.Start();
-    }
-
-    private void StopTimelineUpdater()
+    private double? GetEventTriggerSeconds()
     {
-        if (updateTimer != null)
+        if (!minTimestamp.HasValue || _selectedEvent?.Event is null)
         {
-            updateTimer.Stop();
-            updateTimer.Dispose();
-            updateTimer = null;
+            return null;
         }
+
+        var offset = (_selectedEvent.Event.TimeStamp - minTimestamp.Value).TotalSeconds;
+        if (offset < 0 || offset > videoDuration)
+        {
+            return null;
+        }
+
+        return offset;
     }
 
-    private async Task UpdateTimelinePosition()
+    private async Task JumpToEventTrigger()
     {
-        if (!isPlaying) return;
+        if (!minTimestamp.HasValue || _selectedEvent?.Event is null)
+        {
+            return;
+        }
+
+        var offset = Math.Clamp(
+            (_selectedEvent.Event.TimeStamp - minTimestamp.Value).TotalSeconds,
+            0,
+            videoDuration);
+        await OnTimelineChanged(offset);
+    }
+
+    private async Task StartTimelineUpdater()
+    {
+        _jsRef ??= DotNetObjectReference.Create(this);
+        await PlayerInvokeVoid("startTimeline", _jsRef, 250, videoDuration);
+    }
+
+    private async Task StopTimelineUpdater()
+    {
+        await PlayerInvokeVoid("stopTimeline");
+    }
+
+    [JSInvokable]
+    public Task OnTimelineTick(double time)
+    {
+        if (!isPlaying || Math.Abs(time - currentTime) <= 0.5)
+        {
+            return Task.CompletedTask;
+        }
+
+        currentTime = time;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    [JSInvokable]
+    public Task OnPlayerSeek(double time)
+    {
+        currentTime = time;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    [JSInvokable]
+    public Task OnPlayerTogglePlayPause() => TogglePlayPause();
+
+    private async Task PlayerInvokeVoid(string method, params object?[] args)
+    {
+        if (!RendererInfo.IsInteractive)
+        {
+            return;
+        }
 
         try
         {
-            var time = await JS.InvokeAsync<double>("eval", "document.querySelector('.camera-video')?.currentTime || 0");
-            if (Math.Abs(time - currentTime) > 0.5)
-            {
-                currentTime = time;
-                await InvokeAsync(StateHasChanged);
-            }
+            await JS.InvokeVoidAsync($"teslaCamPlayer.{method}", args);
         }
-        catch
+        catch (JSDisconnectedException)
         {
-            // Ignore errors during timeline updates
+        }
+        catch (TaskCanceledException)
+        {
+        }
+        catch (InvalidOperationException)
+        {
+            // Prerender / static render has no JS runtime.
+        }
+        catch (JSException ex)
+        {
+            Logger.LogDebug(ex, "teslaCamPlayer.{Method} failed", method);
         }
     }
 
@@ -502,9 +560,13 @@ public partial class FilteredEvents : IDisposable
         Navigation.NavigateTo($"/events{queryString}");
     }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
-        StopTimelineUpdater();
+        await StopTimelineUpdater();
+        await PlayerInvokeVoid("dispose");
+
+        _jsRef?.Dispose();
+        _jsRef = null;
     }
 
     private async Task NavigateToPreviousEvent()

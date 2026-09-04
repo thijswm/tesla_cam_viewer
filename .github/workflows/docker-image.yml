@@ -1,15 +1,24 @@
 name: Build and Push docker image
 
 on:
+  push:
+    tags:
+      - '*'
+  release:
+    types: [published]
   workflow_dispatch:
     inputs:
       tag:
         type: string
         required: true
-        description: 'Tag / Version'
+        description: 'Image tag / version (e.g. 1.2.3 or v1.2.3)'
+
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
-  contents: write   # <-- allow pushing tags with GITHUB_TOKEN
+  contents: read
 
 jobs:
   docker:
@@ -19,25 +28,40 @@ jobs:
     steps:
       - name: Checkout the repo
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Create git tag
+      - name: Resolve version
+        id: version
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "${{ inputs.tag }}" -m "Release ${{ inputs.tag }}"
-          git push origin "${{ inputs.tag }}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            RAW="${{ inputs.tag }}"
+          else
+            RAW="${GITHUB_REF_NAME}"
+          fi
+          RAW="${RAW#refs/tags/}"
+          VERSION="${RAW#v}"
+          if [[ "$VERSION" =~ ^[0-9]+(\.[0-9]+){1,3}([-+].+)?$ ]]; then
+            ASM_VERSION="$VERSION"
+          else
+            ASM_VERSION="0.0.0"
+          fi
+          echo "raw=${RAW}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "asm=${ASM_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Using image tag ${RAW}, assembly ${ASM_VERSION}"
 
       - name: Build docker image
         run: |
           docker build -f ./src/TeslaCamViewer/Dockerfile \
-            -t thijswm/tesla-cam-viewer:${{ inputs.tag }} \
+            --build-arg "APP_VERSION=${{ steps.version.outputs.asm }}" \
+            --build-arg "APP_INFORMATIONAL_VERSION=${{ steps.version.outputs.raw }}" \
+            -t "thijswm/tesla-cam-viewer:${{ steps.version.outputs.raw }}" \
+            -t "thijswm/tesla-cam-viewer:${{ steps.version.outputs.version }}" \
             -t thijswm/tesla-cam-viewer:latest \
             ./src/TeslaCamViewer
 
-      - name: push image
+      - name: Push image
         run: |
-          docker login -u thijswm -p ${{ secrets.DOCKER_TOKEN }}
-          docker push thijswm/tesla-cam-viewer:${{ inputs.tag }}
+          echo "${{ secrets.DOCKER_TOKEN }}" | docker login -u thijswm --password-stdin
+          docker push "thijswm/tesla-cam-viewer:${{ steps.version.outputs.raw }}"
+          docker push "thijswm/tesla-cam-viewer:${{ steps.version.outputs.version }}"
           docker push thijswm/tesla-cam-viewer:latest

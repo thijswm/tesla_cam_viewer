@@ -9,6 +9,15 @@ public class AppDbContext : DbContext
     public DbSet<Clip> Clips => Set<Clip>();
     public DbSet<Event> Events => Set<Event>();
     public DbSet<Camera> Cameras => Set<Camera>();
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<Event>(entity =>
+        {
+            entity.HasIndex(e => e.TimeStamp);
+            entity.HasIndex(e => new { e.FolderName, e.Source }).IsUnique();
+        });
+    }
 }
 
 public class Clip

@@ -3,12 +3,13 @@ using Microsoft.AspNetCore.Components.Web;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using TeslaCamViewer.Data;
+using TeslaCamViewer.Shared;
 
 namespace TeslaCamViewer.Pages;
 
 public partial class Calendar
 {
-    [Inject] public AppDbContext Db { get; set; } = default!;
+    [Inject] public IDbContextFactory<AppDbContext> DbFactory { get; set; } = default!;
     [Inject] public NavigationManager Navigation { get; set; } = default!;
     [Inject] public ILogger<Calendar>? Logger { get; set; }
 
@@ -25,16 +26,17 @@ public partial class Calendar
 
     private async Task LoadMonthAsync()
     {
-        var start = DateTime.SpecifyKind(_currentMonth, DateTimeKind.Utc);
-        var end = DateTime.SpecifyKind(_currentMonth.AddMonths(1), DateTimeKind.Utc);
+        var (startUtc, endUtc) = EventLocalTime.UtcRangeForLocalMonth(_currentMonth);
 
-        var events = await Db.Events
-            .Where(e => e.TimeStamp >= start && e.TimeStamp < end)
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var monthEvents = await db.Events.AsNoTracking()
+            .Where(e => e.TimeStamp >= startUtc && e.TimeStamp < endUtc)
             .OrderBy(e => e.TimeStamp)
+            .Select(e => new { e.Id, e.TimeStamp, HasThumbnail = e.Thumbnail != null })
             .ToListAsync();
 
-        var daysInMonth = DateTime.DaysInMonth(start.Year, start.Month);
-        var firstDayOffset = (int)start.DayOfWeek;
+        var daysInMonth = DateTime.DaysInMonth(_currentMonth.Year, _currentMonth.Month);
+        var firstDayOffset = (int)_currentMonth.DayOfWeek;
 
         var cells = new List<CalendarCell>();
 
@@ -45,15 +47,18 @@ public partial class Calendar
 
         for (var day = 1; day <= daysInMonth; day++)
         {
-            var date = new DateTime(start.Year, start.Month, day, 0, 0, 0, DateTimeKind.Utc);
-            var dayEvents = events.Where(e => e.TimeStamp.Date == date.Date).ToList();
-            var thumbnail = dayEvents.FirstOrDefault()?.Thumbnail;
+            var date = new DateTime(_currentMonth.Year, _currentMonth.Month, day);
+            var (dayStartUtc, dayEndUtc) = EventLocalTime.UtcRangeForLocalDate(date);
+            var dayEvents = monthEvents
+                .Where(e => e.TimeStamp >= dayStartUtc && e.TimeStamp < dayEndUtc)
+                .ToList();
+            var thumbnailEventId = dayEvents.FirstOrDefault(e => e.HasThumbnail)?.Id;
 
             cells.Add(new CalendarCell
             {
                 Date = date,
                 EventCount = dayEvents.Count,
-                Thumbnail = ConvertThumbnail(thumbnail)
+                ThumbnailEventId = thumbnailEventId
             });
         }
 
@@ -70,17 +75,6 @@ public partial class Calendar
     {
         _currentMonth = _currentMonth.AddMonths(1);
         await LoadMonthAsync();
-    }
-
-    private static string? ConvertThumbnail(byte[]? thumbnail)
-    {
-        if (thumbnail == null || thumbnail.Length == 0)
-        {
-            return null;
-        }
-
-        var base64 = Convert.ToBase64String(thumbnail);
-        return $"data:image/png;base64,{base64}";
     }
 
     private void OnDateClicked(DateTime? date)
@@ -113,7 +107,7 @@ public partial class Calendar
         if (e.ChangedTouches.Length > 0)
         {
             var deltaX = e.ChangedTouches[0].ClientX - _touchStartX;
-            if (Math.Abs(deltaX) > 100) // Use larger threshold to avoid interfering with taps
+            if (Math.Abs(deltaX) > 100)
             {
                 if (deltaX > 0)
                     await PreviousMonth();
@@ -129,7 +123,7 @@ public partial class Calendar
     {
         public DateTime? Date { get; init; }
         public int EventCount { get; init; }
-        public string? Thumbnail { get; init; }
+        public int? ThumbnailEventId { get; init; }
 
         public static CalendarCell Empty() => new();
     }

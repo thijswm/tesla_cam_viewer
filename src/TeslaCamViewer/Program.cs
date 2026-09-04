@@ -1,11 +1,11 @@
 using Microsoft.EntityFrameworkCore;
+using TeslaCamViewer;
 using TeslaCamViewer.Data;
 using TeslaCamViewer.Services;
 using MudBlazor.Services;
 using Serilog;
 using FFMpegCore;
 using Minio;
-using Minio.DataModel.Args;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -25,7 +25,7 @@ Log.Logger = new LoggerConfiguration()
 
 builder.Host.UseSerilog(Log.Logger);
 
-Log.Information("Starting TeslaCamViewer");
+Log.Information("Starting TeslaCamViewer {Version}", AppVersion.Current);
 
 // Add DbContext factory for components that need concurrent access
 builder.Services.AddDbContextFactory<AppDbContext>(options =>
@@ -47,6 +47,11 @@ builder.Services.AddSingleton<IMinioClient>(sp =>
         .WithCredentials(accessKey, secretKey)
         .WithSSL(useSSL)
         .Build();
+});
+
+builder.Services.AddHttpClient("minio-range", client =>
+{
+    client.Timeout = Timeout.InfiniteTimeSpan;
 });
 
 builder.Services.AddMudServices();
@@ -85,10 +90,41 @@ app.MapBlazorHub();
 app.MapFallbackToPage("/_Host");
 
 app.MapGet("/api/health", () => Results.Ok("ok"));
+app.MapGet("/api/thumbnail/{eventId:int}", async (int eventId, IDbContextFactory<AppDbContext> dbFactory) =>
+{
+    await using var db = await dbFactory.CreateDbContextAsync();
+    var thumbnail = await db.Events.AsNoTracking()
+        .Where(e => e.Id == eventId)
+        .Select(e => e.Thumbnail)
+        .FirstOrDefaultAsync();
+
+    if (thumbnail is null || thumbnail.Length == 0)
+    {
+        return Results.NotFound();
+    }
+
+    return Results.File(thumbnail, "image/png");
+});
 app.MapGet("/api/events", async (IDbContextFactory<AppDbContext> dbFactory) =>
 {
     await using var db = await dbFactory.CreateDbContextAsync();
-    return await db.Events.OrderByDescending(e => e.CreatedAt).ToListAsync();
+    return await db.Events.AsNoTracking()
+        .OrderByDescending(e => e.CreatedAt)
+        .Select(e => new Event
+        {
+            Id = e.Id,
+            FolderName = e.FolderName,
+            Type = e.Type,
+            CreatedAt = e.CreatedAt,
+            Source = e.Source,
+            Lat = e.Lat,
+            Long = e.Long,
+            City = e.City,
+            Street = e.Street,
+            Camera = e.Camera,
+            TimeStamp = e.TimeStamp
+        })
+        .ToListAsync();
 });
 app.MapGet("/api/clips", async (IDbContextFactory<AppDbContext> dbFactory) =>
 {
@@ -119,8 +155,8 @@ app.MapGet("/api/video/{clipId:int}", async (int clipId, IDbContextFactory<AppDb
     return Results.File(clip.Path, "video/mp4", enableRangeProcessing: true);
 });
 
-// Serve stitched camera videos from MinIO
-app.MapGet("/api/camera/{cameraId:int}", async (int cameraId, IDbContextFactory<AppDbContext> dbFactory, IMinioClient minio, HttpContext httpContext) =>
+// Serve stitched camera videos from MinIO with HTTP byte-range support (required for seeking).
+app.MapMethods("/api/camera/{cameraId:int}", ["GET", "HEAD"], async (int cameraId, IDbContextFactory<AppDbContext> dbFactory, IMinioClient minio, IHttpClientFactory httpClientFactory) =>
 {
     await using var db = await dbFactory.CreateDbContextAsync();
     var camera = await db.Cameras.FindAsync(cameraId);
@@ -133,29 +169,18 @@ app.MapGet("/api/camera/{cameraId:int}", async (int cameraId, IDbContextFactory<
     if (string.IsNullOrWhiteSpace(camera.MinioPath))
     {
         Log.Warning("Camera {CameraId} has no MinIO path", cameraId);
-        return Results.NotFound(new { error = "No video path available" });
+        return Results.NotFound();
     }
 
-    try
-    {
-        Log.Information("Streaming video from MinIO for camera {CameraId} ({CameraName}): {Path}",
-            cameraId, camera.CameraName, camera.MinioPath);
+    Log.Debug("Streaming video from MinIO for camera {CameraId} ({CameraName}): {Path}",
+        cameraId, camera.CameraName, camera.MinioPath);
 
-        var memoryStream = new MemoryStream();
-        await minio.GetObjectAsync(new GetObjectArgs()
-            .WithBucket(camera.BucketName)
-            .WithObject(camera.MinioPath)
-            .WithCallbackStream(stream => stream.CopyTo(memoryStream)),
-            httpContext.RequestAborted);
-
-        memoryStream.Position = 0;
-        return Results.Stream(memoryStream, "video/mp4", enableRangeProcessing: true);
-    }
-    catch (Exception ex)
-    {
-        Log.Error(ex, "Failed to stream video from MinIO for camera {CameraId}", cameraId);
-        return Results.Problem("Failed to retrieve video from storage");
-    }
+    return new MinioRangeStreamResult(
+        minio,
+        httpClientFactory.CreateClient("minio-range"),
+        camera.BucketName,
+        camera.MinioPath,
+        camera.FileSize);
 });
 
 await app.RunAsync();

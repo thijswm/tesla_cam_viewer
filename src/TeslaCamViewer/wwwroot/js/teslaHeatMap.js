@@ -87,12 +87,21 @@
             const dynamicRadius = Math.max(25, Math.min(80, 100 - (zoom * 4)));
             const dynamicBlur = Math.max(15, dynamicRadius * 0.6);
 
+            const heatPoints = points.map((p) => {
+                const lat = p[0];
+                const lng = p[1];
+                const intensity = Number(p[2]) > 0 ? Number(p[2]) : 1;
+                return [lat, lng, intensity];
+            });
+
+            const maxIntensity = heatPoints.reduce((max, p) => Math.max(max, p[2]), 1);
+
             const heatOptions = {
                 radius: dynamicRadius,
                 blur: dynamicBlur,
                 maxZoom: 19,
-                max: 1,
-                minOpacity: 0.5,
+                max: maxIntensity,
+                minOpacity: 0.2,
                 gradient: {
                     0.0: 'blue',
                     0.3: 'cyan',
@@ -102,12 +111,9 @@
                 }
             };
 
-            const latLngs = points
-                .map(p => L.latLng(p[0], p[1]));
+            heat = L.heatLayer(heatPoints, heatOptions).addTo(map);
 
-            heat = L.heatLayer(latLngs, heatOptions).addTo(map);
-
-            const bounds = L.latLngBounds(latLngs);
+            const bounds = L.latLngBounds(heatPoints.map((p) => [p[0], p[1]]));
             if (!bounds.isValid()) return;
 
             map.fitBounds(bounds.pad(0.2));
