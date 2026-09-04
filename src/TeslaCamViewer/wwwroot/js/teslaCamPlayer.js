@@ -105,20 +105,14 @@ window.teslaCamPlayer = (function () {
         if (document.webkitExitFullscreen) return document.webkitExitFullscreen();
     }
 
-    function isFullscreen() {
-        return !!(document.fullscreenElement || document.webkitFullscreenElement);
-    }
-
     function fullscreen(cameraName) {
         const video = videoByCamera(cameraName);
         if (!video) return;
 
-        if (isFullscreen()) {
-            const current = document.fullscreenElement || document.webkitFullscreenElement;
-            if (!cameraName || current === video) {
-                exitFs();
-                return;
-            }
+        const current = document.fullscreenElement || document.webkitFullscreenElement;
+        if (current === video) {
+            exitFs();
+            return;
         }
 
         requestFs(video);
@@ -155,11 +149,6 @@ window.teslaCamPlayer = (function () {
         if (key === "ArrowRight") {
             e.preventDefault();
             skipBy(SKIP_SECONDS);
-            return;
-        }
-        if (key === "f" || key === "F") {
-            e.preventDefault();
-            fullscreen();
         }
     }
 

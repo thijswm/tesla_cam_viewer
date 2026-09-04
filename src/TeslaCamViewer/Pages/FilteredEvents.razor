@@ -255,7 +255,7 @@
                                                 </MudStack>
                                                 <MudHidden Breakpoint="Breakpoint.SmAndDown" Invert="false">
                                                     <MudText Typo="Typo.caption" Align="Align.Center" Color="Color.Secondary">
-                                                        Space play · ← → 5s · F fullscreen · click marker to jump
+                                                        Space play · ← → 5s · click marker to jump
                                                     </MudText>
                                                 </MudHidden>
 
@@ -353,7 +353,7 @@
                                                         <MudStack Row="true" Spacing="0">
                                                             <MudIconButton Icon="@Icons.Material.Filled.Fullscreen"
                                                                            Size="Size.Small"
-                                                                           title="Fullscreen (F for event camera)"
+                                                                           title="Fullscreen this camera"
                                                                            aria-label="@($"Fullscreen {slot.Title}")"
                                                                            OnClick="@(() => FullscreenCamera(slot.Key))" />
                                                             <MudButton Href="@GetVideoUrl(camera)"
